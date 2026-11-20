@@ -18,7 +18,7 @@
 //
 // Model access: HTTPS to https://openrouter.ai/api/v1/chat/completions only, key from $OPENROUTER_API_KEY
 // (never printed, never logged). Every call appends one line to <repo>/floorplan/.cache/run-log.jsonl:
-//   {ts, cmd, model, prompt_tokens, completion_tokens, cost_estimate_usd}
+//   {ts, cmd, model, host, prompt_tokens, completion_tokens, cost_estimate_usd}
 // (cost is OpenRouter's own measured spend for the call, when it reports one).
 //
 // Always unattended (FLOORPLAN_UNATTENDED=1): nothing is written outside <repo>/floorplan/. Every failure
@@ -91,7 +91,7 @@ function logCall(cmdName, usage) {
   callsMade++;
   try {
     fs.mkdirSync(cacheDir, { recursive: true });
-    fs.appendFileSync(runLog, JSON.stringify({ ts: new Date().toISOString(), cmd: cmdName, model, prompt_tokens: usage.prompt_tokens || 0, completion_tokens: usage.completion_tokens || 0, cost_estimate_usd: usage.cost_estimate_usd ?? null }) + '\n');
+    fs.appendFileSync(runLog, JSON.stringify({ ts: new Date().toISOString(), cmd: cmdName, model, host: 'openrouter.ai', prompt_tokens: usage.prompt_tokens || 0, completion_tokens: usage.completion_tokens || 0, cost_estimate_usd: usage.cost_estimate_usd ?? null }) + '\n');
   } catch {}
 }
 /** One model call. Returns the answer text, or throws { code, message }. */
