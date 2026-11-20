@@ -19,7 +19,7 @@ export FLOORPLAN_UNATTENDED=1
 (in Windows PowerShell: `$env:FLOORPLAN_UNATTENDED = "1"`), or pass `--unattended` to a script, which sets the same thing for it and for the scripts it runs (`refresh.mjs` runs `scan.mjs` and `build.mjs`). In unattended mode:
 
 - **Nothing is written outside `floorplan/`.** No `CLAUDE.local.md`, no line in `.git/info/exclude`, no moving an old Floorplan section out of `CLAUDE.md`, and an old `show-code/` map is left where it is. Git is run with `--no-optional-locks`, so even `git status` leaves the repo's own files alone.
-- **The map names no agent.** It records `"agent": "none"`, so its Health and blueprint buttons say "Fix with AI" and "paste it into your AI coding agent" instead of naming Claude or Codex. You can also set `FLOORPLAN_AGENT=none` on its own. Naming an agent (`--agent claude`, `FLOORPLAN_AGENT=codex`) still wins. If the map's server is running, it names the CLI it found, as it always has.
+- **The map names no agent.** It records `"agent": "none"`, the honest label for a map made without an agent session (in CI, in scripts, from `tools/fp.mjs`). You can also set `FLOORPLAN_AGENT=none` on its own.
 - **`open.mjs` starts nothing.** Nobody is there to look, so it starts no server and opens no browser.
 - **Failures fail.** See [Exit codes](#exit-codes).
 
@@ -227,12 +227,12 @@ Two `descriptions` jobs, one per worksheet, each writing its `descriptions` file
   `maskSecrets(text)` returns the text with every value that is or might be a secret replaced with `«hidden»`, and the same text when there's none. It's a stable export, checked by the tests. (With a second argument, `{ path, lang, category }`, it treats the text as that file's source code instead.)
 - Patterns in architecture.json (`paths`, `exclude`, `ignore`, `packages`, `hosts`) that aren't valid, are over 300 characters, have more than 12 wildcards or 8 `{…}` groups, or number over 500 in one list, are build errors that name them (`nodes[3] ("web").paths[0] "[evil" is not a valid pattern: …`), so they go back to the model like any other.
 - Limits: time, cost and how many tool calls a job may make (each job suggests a `toolCalls` budget).
-- What happens to the map afterwards. `floorplan/.cache/` holds digests of the code (the scan, the worksheets, which quote short pieces of it with secrets masked), so don't publish it. `graph.json` includes this machine's folder path and the repos' remotes. To share a map, make an export, which leaves those out: `node floorplan/serve.mjs --export [file] [--include flows,notes,recent,health]`.
+- What happens to the map afterwards. `floorplan/.cache/` holds digests of the code (the scan, the worksheets, which quote short pieces of it with secrets masked), so don't publish it. `graph.json` includes this machine's folder path and the repos' remotes. To share a map, make an export, which leaves those out: `node <this repo>/skills/floorplan/assets/serve.mjs <repo>/floorplan --export [file] [--include flows,notes,recent,health]`.
 
 ## What isn't covered
 
 - **Blueprints**, maps planned from a PRD, need a person to answer questions, so the workflow file doesn't make them. A refresh of an existing blueprint still works.
-- **Asking questions on the map**, requesting flows and changing a blueprint from the map need the map's server and Claude Code or Codex, as usual.
+- **Asking questions on the map** and changing a blueprint from the map. The map has no Ask bar and no runtime server in this fork; a blueprint is changed by editing `plan.json` and `architecture.json` and re-running `refresh.mjs`.
 
 ## Keeping it working
 

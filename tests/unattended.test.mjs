@@ -9,7 +9,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import vm from 'node:vm';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { SKILL, lib, shopApp, makeProject, run, readJson, writeJson, readGraph, cleanup } from './helpers.mjs';
@@ -454,7 +453,7 @@ test('unattended mode writes nothing outside floorplan/, even with an old Floorp
     const r = exec('refresh.mjs', p, ['--unattended']);
     assert.equal(r.code, 0, r.err);
     assert.match(r.out, /^NEXT/m);
-    assert.match(exec('open.mjs', p, [], { env: UNATTENDED }).out, /not starting the map's server/);
+    assert.match(exec('open.mjs', p, [], { env: UNATTENDED }).out, /not opening a browser/);
     assert.deepEqual(snapshot(p), before, 'nothing outside floorplan/ changed: no CLAUDE.local.md, no .git/info/exclude, CLAUDE.md as it was');
     assert.ok(!fs.existsSync(path.join(p, 'floorplan', '.cache', 'server.json')), 'open.mjs started no server');
   } finally { cleanup(p); }
@@ -489,12 +488,6 @@ test('unattended mode leaves a map from before the rename (show-code/) where it 
 });
 
 // ---------- a map that names no agent ----------
-/** The viewer's agent labels, as the built page works them out (run against a pretend window). */
-function agentLabels(html, { server, agent }) {
-  const code = /const AGENT_ID = [\s\S]*?signIn: 'Run <code>claude<\/code>[^\n]*\n/.exec(html)?.[0];
-  assert.ok(code, 'the page works out its agent labels in one place (const AGENT_ID … const AGENT)');
-  return vm.runInNewContext(code + '\nAGENT', { window: { FLOORPLAN_SERVER: server }, G: { meta: { agent } } });
-}
 
 test('a map made in unattended mode records agent "none", and its page names no agent', () => {
   const p = shopApp();
@@ -506,15 +499,8 @@ test('a map made in unattended mode records agent "none", and its page names no 
     assert.equal(readGraph(p).meta.agent, 'none');
     const html = fs.readFileSync(path.join(p, 'floorplan', 'index.html'), 'utf8');
     assert.match(html, /"agent":"none"/);
-    const A = agentLabels(html, { agent: 'none' });
-    // what Health's and the blueprint's buttons and hints say: "Fix with …", "paste it into …"
-    for (const shown of [`Fix with ${A.name}`, `Build this with ${A.name}`, `Copied. Paste it into ${A.app}.`]) assert.doesNotMatch(shown, /Claude|Codex/, shown);
-    assert.equal(A.id, 'none');
-    // the map's server, when it runs, still decides: it names the CLI it found
-    assert.equal(agentLabels(html, { agent: 'none', server: { engine: 'codex' } }).name, 'Codex');
-    // and maps made by Claude Code or Codex are labelled as before
-    assert.equal(agentLabels(html, { agent: 'claude' }).name, 'Claude');
-    assert.equal(agentLabels(html, { agent: 'codex' }).name, 'Codex');
+    // the page offers no agent-named buttons, prompts or ask bar at all, whatever built the map
+    for (const piece of ['Fix with Claude', 'Fix with Codex', 'Fix with AI', 'Build this with Claude', 'Build this with Codex', 'Ask anything about', 'FLOORPLAN_SERVER']) assert.ok(!html.includes(piece), `no ${JSON.stringify(piece)} affordance`);
   } finally { cleanup(p); }
 });
 

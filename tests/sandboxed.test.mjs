@@ -161,55 +161,6 @@ test('#tour=0 in the address keeps the tour from starting on its own, and is kep
   assert.equal(run('#v=n%3Aapi', 'root', null), '/floorplan/index.html');
 });
 
-// ---------- handing "Ask about this" to the page around an exported map ----------
-
-/** HOST_ASK as the page works it out, for an exported copy (or not), framed (or not), with this hash. */
-function hostAsk({ exported = true, framed = true, hash = '' }) {
-  const line = html.split('\n').find((l) => l.startsWith('const HOST_ASK = '));
-  assert.ok(line, 'the built page decides HOST_ASK in one line');
-  const self = {};
-  const ctx = { EXPORTED: exported ? { at: '2026-11-12T00:00:00Z' } : null, location: { hash }, URLSearchParams };
-  ctx.window = framed ? { parent: {} } : self;
-  if (!framed) self.parent = self;
-  return vm.runInNewContext(line.replace('const HOST_ASK =', '') , ctx);
-}
-
-test('an exported copy hands Ask to the page around it only when that page says ask=host', () => {
-  assert.equal(hostAsk({ hash: '#ask=host' }), true);
-  assert.equal(hostAsk({ hash: '#tour=0&ask=host&v=n%3Aapi' }), true);
-  assert.equal(hostAsk({ hash: '' }), false, 'no flag, no Ask items');
-  assert.equal(hostAsk({ hash: '#ask=yes' }), false);
-  assert.equal(hostAsk({ hash: '#ask=host', framed: false }), false, 'a map opened on its own has no page to hand to');
-  assert.equal(hostAsk({ hash: '#ask=host', exported: false }), false, 'a served map keeps its own Ask bar');
-});
-
-test('askHost sends only the chosen items\' ids and names to the page around the map', () => {
-  const posted = [], toasts = [];
-  const names = { 'f:shop-api/server.js': 'Server', 'n:api': 'Shop API' };
-  const ctx = {
-    window: { parent: { postMessage: (msg, origin) => posted.push([msg, origin]) } },
-    Q: { exists: (id) => id in names },
-    info: (id) => ({ name: names[id], path: 'secret/path/' + id }),
-    toast: (t) => toasts.push(t),
-  };
-  vm.runInNewContext(piece('function askHost(ids) {') + "\naskHost(['f:shop-api/server.js', 'nope', 'n:api']); askHost([]);", ctx);
-  const plain = (v) => JSON.parse(JSON.stringify(v));
-  assert.deepEqual(plain(posted[0]), [{ type: 'floorplan:ask', items: [{ id: 'f:shop-api/server.js', name: 'Server' }, { id: 'n:api', name: 'Shop API' }] }, '*']);
-  assert.deepEqual(plain(posted[1][0]), { type: 'floorplan:ask', items: [] });
-  assert.deepEqual(plain(toasts), ['Asking about Server and Shop API', 'Ask about this view']);
-});
-
-test('ask=host stays in the address as people move around the map, like tour=0', () => {
-  const run = (hash, container, sel) => {
-    const pushed = [];
-    const ctx = { location: { hash, pathname: '/map.html', search: '' }, history: { pushState: (s, t, u) => pushed.push(u) }, URLSearchParams };
-    vm.runInNewContext(piece('function setHash(container, sel) {') + '\nsetHash(c, s);', Object.assign(ctx, { c: container, s: sel }));
-    return pushed[0];
-  };
-  assert.equal(run('#ask=host', 'n:api', null), '#ask=host&v=n%3Aapi');
-  assert.equal(run('#tour=0&ask=host&v=n%3Aapi', 'root', null), '#tour=0&ask=host');
-});
-
 // ---------- copying ----------
 
 test('a copy the browser allows reports success and shows nothing else (unchanged)', async () => {
@@ -234,7 +185,7 @@ test('a refused copy reports failure and shows the text, selected, to copy by ha
 test('a refused copy of text already on screen selects it there and says so plainly', async () => {
   const b = browser({ clipboard: 'refused', execCopy: false });
   const shown = { isConnected: true };
-  assert.equal(await b.copy('node floorplan/serve.mjs', { select: shown }), false);
+  assert.equal(await b.copy('node floorplan/query.mjs', { select: shown }), false);
   assert.deepEqual(b.seen.selected, [shown]);
   assert.equal(b.seen.modals.length, 0);
   assert.match(b.seen.toasts[0], /blocked copying/);
@@ -260,7 +211,6 @@ test('every copy in the page goes through copy(), and nothing says "Copied" unle
   assert.doesNotMatch(rest, /navigator\.clipboard/, 'use copy() (SC.copy in ui/*.js), which only reports success when the text was really copied');
   assert.doesNotMatch(rest, /SC\.copy\([^;]*\);\s*SC\.toast/, 'show "Copied" only after SC.copy(...) resolves true: SC.copy(x).then((ok) => { if (ok) SC.toast(...) })');
   assert.match(rest, /copy\(a\.dataset\.copy, \{ select: a\.previousElementSibling \}\)\.then\(\(ok\) => \{ if \(ok\) a\.textContent = '✓'; \}\)/, 'the panel\'s copy button shows its tick only after a real copy');
-  assert.match(rest, /copy\('node floorplan\/serve\.mjs', \{ select: warn\.querySelector\('code'\) \}\)\.then\(\(ok\) => \{ if \(ok\) b\.textContent = 'Copied'; \}\)/);
 });
 
 // ---------- new windows ----------
@@ -305,10 +255,8 @@ test('links that open a new window are left to the browser where storage works, 
   assert.deepEqual(click({ persistent: false, button: 1 }), { prevented: false, opened: [] }, 'a middle-click is the browser\'s');
 });
 
-test('every new window in the page goes through openWindow, except the Health report where storage works, which is unchanged', () => {
+test('every new window in the page goes through openWindow, which shows the address when the browser blocks it', () => {
   const rest = html.replace(helpersSource(), '');
   const opens = [...rest.matchAll(/window\.open\([^)]*\)/g)].map((m) => m[0]);
-  assert.deepEqual(opens, ["window.open(url, '_blank', 'noopener')"], 'open new windows with openWindow() (SC.openWindow in ui/*.js), which shows the address when the browser blocks the window');
-  assert.match(rest, /if \(SC\.store\.persistent === false && SC\.openWindow\) opened = SC\.openWindow\(url, \{ quiet: true \}\);/);
-  assert.match(rest, /if \(report && !opened\) SC\.showAddress\(url\);/, 'a blocked report shows its address once the dismissal is saved');
+  assert.deepEqual(opens, [], 'open new windows with openWindow() (SC.openWindow in ui/*.js), never window.open directly');
 });

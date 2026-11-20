@@ -102,7 +102,7 @@ const FILE_EXT_TAIL = /\.(png|jpe?g|gif|svg|ico|webp|css|js|mjs|ts|tsx|json|html
 function normalizeCallLiteral(raw) {
   let s = raw.trim();
   let host = null;
-  // a Firebase function's own address (https://us-central1-<project>.cloudfunctions.net/signDocument) is
+  // a Firebase function's own address (us-central1-<project>.cloudfunctions.net/signDocument) is
   // this app's backend, not an outside service
   const fn = /^https?:\/\/[^/\s]*\.cloudfunctions\.net(\/.*)$/i.exec(s);
   if (fn) s = fn[1];

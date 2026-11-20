@@ -46,8 +46,8 @@ async function assertHashesMatch(html) {
 
 async function startServer(root) {
   const port = 20000 + Math.floor(Math.random() * 20000);
-  const server = spawn(process.execPath, [path.join(root, 'floorplan', 'serve.mjs'), '--port', String(port), '--no-open'], {
-    cwd: root, env: { ...process.env, FLOORPLAN_CLAUDE: path.join(root, 'no-such-cli'), FLOORPLAN_CODEX: path.join(root, 'no-such-cli'), FLOORPLAN_NO_PROMPTS: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
+  const server = spawn(process.execPath, [path.join(SKILL, 'assets', 'serve.mjs'), path.join(root, 'floorplan'), '--port', String(port), '--no-open'], {
+    cwd: root, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   const base = await new Promise((resolve, reject) => {
     let out = '';
@@ -139,25 +139,19 @@ describe('hostile text in every field leaves a page whose data parses and round-
 
   test('an exported copy round-trips, with the flows asked for', async () => {
     const file = path.join(root, 'shared.html');
-    execFileSync(process.execPath, [path.join(root, 'floorplan', 'serve.mjs'), '--export', file, '--include', 'flows,notes,recent,health'], { cwd: root });
+    execFileSync(process.execPath, [path.join(SKILL, 'assets', 'serve.mjs'), path.join(root, 'floorplan'), '--export', file, '--include', 'flows,notes,recent,health'], { cwd: root });
     const { graph } = await dataOf(fs.readFileSync(file, 'utf8'));
     const built = readGraph(root);
     for (const k of ['project', 'nodes', 'files', 'routes', 'links', 'flows', 'tour', 'recent']) assert.deepEqual(graph[k], built[k], k);
   });
 
-  test('the served page and the Export button: data and the server\'s own settings both parse', async () => {
+  test('the served page is the same self-contained map, and parses', async () => {
     const s = await startServer(root);
     try {
       const html = await (await fetch(s.base + '/')).text();
-      const { graph, blocks } = await dataOf(html);
+      const { graph } = await dataOf(html);
       assert.deepEqual(graph, readGraph(root));
-      const inject = blocks.find((b) => b.body.startsWith('window.FLOORPLAN_SERVER='));
-      const settings = JSON.parse(inject.body.slice('window.FLOORPLAN_SERVER='.length, -1));
-      assert.match(settings.token, /^[0-9a-f]{32}$/);
-      const flow = { id: 'x1', title: `From the page ${H}`, steps: [{ ref: 'n:web', note: H }, { ref: 'n:api', note: H }] };
-      const r = await fetch(s.base + '/api/export', { method: 'POST', headers: { 'content-type': 'application/json', 'x-floorplan-token': settings.token }, body: JSON.stringify({ include: ['flows'], flows: [flow] }) });
-      const exported = await dataOf(await r.text());
-      assert.deepEqual(exported.graph.flows.find((f) => f.id === 'x1').steps.map((st) => st.note), [H, H]);
+      assert.ok(!html.includes('FLOORPLAN_SERVER'), 'the page carries no server settings');
     } finally { await s.stop(); }
   });
 
@@ -219,7 +213,7 @@ describe('a secret written into a description, label or note never reaches the m
       assert.ok(!text.includes(key), `${f} holds the key`);
       assert.ok(!text.includes(pw), `${f} holds the database password`);
     }
-    const out = execFileSync(process.execPath, [path.join(root, 'floorplan', 'serve.mjs'), '--export', path.join(root, 'x.html'), '--include', 'flows,notes,recent,health'], { cwd: root, encoding: 'utf8' });
+    const out = execFileSync(process.execPath, [path.join(SKILL, 'assets', 'serve.mjs'), path.join(root, 'floorplan'), '--export', path.join(root, 'x.html'), '--include', 'flows,notes,recent,health'], { cwd: root, encoding: 'utf8' });
     assert.match(out, /Exported/);
     assert.ok(!fs.readFileSync(path.join(root, 'x.html'), 'utf8').includes(key));
     const g = readGraph(root);
@@ -278,7 +272,7 @@ describe('Content-Security-Policy', () => {
 
   test('an exported copy may run only its own scripts, and talk to nothing', async () => {
     const file = path.join(root, 'shared.html');
-    execFileSync(process.execPath, [path.join(root, 'floorplan', 'serve.mjs'), '--export', file], { cwd: root });
+    execFileSync(process.execPath, [path.join(SKILL, 'assets', 'serve.mjs'), path.join(root, 'floorplan'), '--export', file], { cwd: root });
     const html = fs.readFileSync(file, 'utf8');
     await assertHashesMatch(html);
     const { directives: d } = policyOf(html);
@@ -293,16 +287,16 @@ describe('Content-Security-Policy', () => {
     assert.match(html.slice(0, policyOf(html).at), /^<!doctype html>\s*<html lang="en">\s*<head>\s*<meta charset="utf-8">\s*$/i, 'right after the charset');
   });
 
-  test('the map on disk and the served page may also talk to their own local server, and nothing else', async () => {
+  test('the map on disk talks to nothing at all, and the served page is the same file', async () => {
     const html = fs.readFileSync(path.join(root, 'floorplan', 'index.html'), 'utf8');
     await assertHashesMatch(html);
-    assert.deepEqual(policyOf(html).directives['connect-src'], ["'self'"]);
+    assert.deepEqual(policyOf(html).directives['connect-src'], ["'none'"]);
     const s = await startServer(root);
     try {
       const served = await (await fetch(s.base + '/')).text();
-      await assertHashesMatch(served); // including the server's own settings script
-      assert.match(served, /window\.FLOORPLAN_SERVER=/);
-      assert.deepEqual(policyOf(served).directives['connect-src'], ["'self'"]);
+      assert.equal(served, html, 'the server adds nothing to the page');
+      await assertHashesMatch(served);
+      assert.deepEqual(policyOf(served).directives['connect-src'], ["'none'"]);
     } finally { await s.stop(); }
   });
 

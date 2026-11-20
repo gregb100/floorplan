@@ -293,7 +293,7 @@ function bunRoutes(code, at, handlerOf) {
       const methods = e.value.startsWith('{') ? entries(code, e.start).filter((x) => VERBS.has(x.key)) : [];
       const targets = methods.length ? methods : [{ key: 'ANY', value: e.value }];
       for (const t of targets) {
-        if (/^(?:false|null|undefined)$/.test(t.value)) continue; // left to the server's fetch()
+        if (/^(?:false|null|undefined)$/.test(t.value)) continue; // left to the server's own request layer
         // a static response (`new Response("ok")`, `Bun.file(…)`) serves the route too, with no handler to name
         const handler = handlerOf(t.value)?.handler;
         routes.push({ method: t.key, path: e.key, var: null, line, framework: 'table', ...(handler ? { handler } : {}) });

@@ -3,64 +3,45 @@
 ## Repo layout
 
 ```
-.claude-plugin/
-  plugin.json          the plugin: name, version, author
-  marketplace.json     this repo as its own one-plugin marketplace
-  icon.png
-.codex-plugin/
-  plugin.json          the same plugin for Codex (same skill, same version)
-  icon.png
-.agents/plugins/
-  marketplace.json     this repo as a Codex marketplace
 skills/floorplan/
-  SKILL.md             the workflow Claude and Codex follow
-  agents/openai.yaml   how Codex lists the skill
+  SKILL.md             the workflow an agent session follows
   workflow.json        the same steps as SKILL.md, as data, for running without an agent session
-  references/          formats and style guides Claude reads while working
+  references/          formats and style guides the agent (or you) reads while working
     schema.md                architecture.json and recent-work.json
     choosing-boundaries.md   how to carve a codebase into a good map
     writing-descriptions.md  plain-language names and descriptions
     blueprint.md             plan.json, for a map planned from a PRD
-  scripts/             Node.js, no dependencies; Claude runs these
-    status.mjs     is there a map, and how stale is it (runs when the skill loads)
+  scripts/             Node.js, no dependencies
+    status.mjs     is there a map, and how stale is it
     scan.mjs       repos, files, imports, endpoints, requests → .cache/scan.json
     plan.mjs       a blueprint's plan.json → the same .cache/scan.json
-    build.mjs      validate, assign files, connect, Health, screens → graph.json + index.html
-    describe.mjs   worksheets for Claude to name and describe files and endpoints
+    build.mjs      validate, assign files, connect, Health, screens → graph.json + index.html + query.mjs
+    describe.mjs   worksheets for naming and describing files and endpoints
     refresh.mjs    incremental update: re-scan, carry over, flag changes, rebuild
     recent.mjs     facts for marking recent work
-    open.mjs       start or reuse the map's server, and open the browser
-    lib/           extraction, import resolution, Nuxt auto-imports, route matching, Health, screens, which agent is running, helpers
+    open.mjs       open floorplan/index.html in the browser (no server needed)
+    lib/           extraction, import resolution, Nuxt auto-imports, route matching, Health, screens, helpers
   assets/
     viewer.html    the map (template the build fills in)
-    ui/            viewer extensions: Theme button, blueprints, glossary, Health, recent work, screens, tour, waitlist card
-    graph-query.js shared map lookups (viewer, query.mjs, Ask instructions)
-    serve.mjs      copied into each project's floorplan/ folder; answers through Claude Code or Codex
+    ui/            viewer extensions: Theme button, blueprints, glossary, Health, recent work, screens, tour
+    graph-query.js shared map lookups (viewer and query.mjs)
+    serve.mjs      optional: serves a built map folder on 127.0.0.1, and exports a copy to share
     page-safety.mjs  the one way data and code go into a page's <script> blocks, and its Content-Security-Policy
-                   (used by build.mjs, and copied next to serve.mjs)
     query-cli.mjs  becomes floorplan/query.mjs
     logo.png, favicon.png
     vendor/        bundled layout engine (elkjs) and fonts, with their licenses
 tests/                 regression tests and the sample projects they map
-tools/checksums.mjs    writes CHECKSUMS.txt for a release, and checks an installed copy against it
-CHECKSUMS.txt          SHA-256 of every file the plugin runs from, as of the last release
+tools/fp.mjs           the unattended driver: scan → arch → build → describe → build, through OpenRouter
+tools/checksums.mjs    writes CHECKSUMS.txt for a release, and checks a copy against it
+CHECKSUMS.txt          SHA-256 of every file the skill runs from, as of the last release
 docs/                  these guides
 ```
 
-## Try your working copy
+This fork of Floorplan ships the skill, not a plugin: the `claude`, `codex` and `.agents` plugin manifests are gone, no model CLI is ever started, and nothing shipped makes an outbound request. [`tests/supply-chain.test.mjs`](../tests/supply-chain.test.mjs) and [`tests/hardened.test.mjs`](../tests/hardened.test.mjs) hold that line.
 
-Install from your local folder instead of GitHub:
+## Running it
 
-```bash
-claude plugin marketplace add /path/to/floorplan
-claude plugin install floorplan@floorplan
-```
-
-A plugin installed from a local folder runs straight from it, so edits apply in the next session with no update step.
-
-To try it in Codex, see [Trying a working copy](codex.md#trying-a-working-copy). Codex copies a local plugin when you add it, so run `codex plugin add floorplan@floorplan` again after each change. `--agent claude|codex|none` on build.mjs (or `FLOORPLAN_AGENT`) and `--engine claude|codex` on serve.mjs let you try either agent's map from anywhere.
-
-The scripts also run on their own, which is the fastest way to work on them:
+The scripts run on their own, which is the fastest way to work on them:
 
 ```bash
 node skills/floorplan/scripts/scan.mjs /path/to/project
@@ -68,159 +49,27 @@ node skills/floorplan/scripts/build.mjs /path/to/project
 node skills/floorplan/scripts/open.mjs /path/to/project
 ```
 
-`build.mjs` needs a `floorplan/architecture.json` in the project, so run the skill once first, or write a small one by hand ([schema](../skills/floorplan/references/schema.md)).
+The full pipeline, with a model doing the planning and describing:
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...
+node tools/fp.mjs run /path/to/project            # scan → arch → build → describe → build
+node tools/fp.mjs arch /path/to/project --dry-run # print the prompt, call nothing
+```
+
+`fp.mjs` logs each model call to the project's `floorplan/.cache/run-log.jsonl` and each run's steps to `driver-result.json` beside it.
 
 ## Tests
 
 ```bash
-npm test
+npm test                          # the whole suite (node --test)
+node --test tests/hardened.test.mjs tests/supply-chain.test.mjs
 ```
 
-The tests use Node's built-in test runner, so there's nothing to install (`npm test` is the same as `node --test`). GitHub runs them on every push and pull request on Linux and Windows with Node 18, 20 and 22, and on macOS weekly and on demand (Actions → macOS → Run workflow), since its macOS machines are often all busy.
+The suite maps sample projects into temp folders and builds real maps, so it exercises the build, the hardened page (no requests, no external addresses, no CLI spawns) and the driver's contract with the scripts.
 
-| File | What it checks |
-|---|---|
-| `parsing.test.mjs` | imports, endpoints, web requests and doc comments, per language and framework |
-| `aspnet.test.mjs` | ASP.NET Core: controller, conventional, inherited, minimal-API (including mappers called from another file) and SignalR endpoints, `using` and `global using` links between C# files, requests matched ignoring case and .NET test-project folders skipped (both for C# only, so other frameworks match exactly and keep their endpoints), and Health (who may call each endpoint, handlers and base classes in other files, app-wide policies per project, CORS, Stripe webhooks, connection-string passwords, each with look-alikes it must leave alone), and C# files built to make pattern matching slow |
-| `tsconfig-inheritance.test.mjs` | local configuration inheritance: arrays and single bases, alias links, relative paths, overrides, legacy baseUrl and cycles |
-| `helpers-lib.test.mjs` | globs, file types, command-line flags, fallback names |
-| `secrets.test.mjs` | Health finds secrets, masks them, and ignores placeholders: variables a script or pipeline fills in (psql variables too, with or without a space), SQL comments, "your key here" in Portuguese, Spanish, French and German, file paths, record ids, autofill words, made-up keys and publishable keys, each with a real secret it must still find |
-| `health.test.mjs` | which endpoints Health calls open to anyone (FastAPI, Flask and Express samples in `fixtures/`): sign-in checks recognised by name, and FastAPI dependencies by what their code does (a factory's result, a `Depends()` kept in a variable, a list kept in a constant, a function that raises a 401), with look-alikes that must stay open (logging decorators, schema validators, dependencies that check nothing) |
-| `fastapi-router-auth.test.mjs` | a FastAPI `APIRouter(...)` read whole however deeply its dependencies nest (`Depends(require_workspace("tours"))`), every dependency considered, `authenticate` and `authorize` counted, and look-alikes that must not count: database sessions, a check in a comment or a string, another router's check, a router whose brackets never close |
-| `fastapi-http-middleware.test.mjs` | a FastAPI `@app.middleware("http")` that turns callers away protects every route of that app, and one that only adds headers, logs or times requests protects nothing |
-| `express-global-guard.test.mjs` | which Express and Hono middleware counts as a login check for the endpoints behind it (app-wide, for a path, or on a router), with look-alikes that must not (`cors`, a header name in a string, a session, a router named `authRoutes`), and Health naming the app-wide check a clean result rests on |
-| `express-mounts.test.mjs` | Express and Hono routes: routers under any name, mounts followed through index files, factories, `require()` and namespace imports, routers nested in one file, names handed to `app.use()` that aren't routers, and a check on a mount landing on the right endpoints (samples in `fixtures/`) |
-| `public-by-design.test.mjs` | what Health leaves alone because it's public on purpose (feeds, addresses a project publishes, cached responses, routes with nothing private, Payload CMS, tracker tokens, files a tool opens, Expo Router screens, files another file names), each with a near miss it must still report |
-| `health-checked.test.mjs` | Health's "What was checked": each check says what it read or that it found nothing, louder when code runs a server but no endpoints were found, in graph.json, the build's report and `--json`, and the Health panel (its code run against a stand-in viewer) |
-| `nuxt.test.mjs` | Nuxt auto-imports: pages linked to the components and composables they use without an import, from `.nuxt/`'s name lists or Nuxt's folder conventions, names a file imports or defines itself left alone, `.nuxt/` kept off the map |
-| `stack-health.test.mjs` | Health's checks for Supabase row-level security (including dynamic SQL in a loop), Firebase rules, Stripe webhook signatures, secret keys in public variables and CORS, with look-alikes each must leave alone, and a whole sample app done wrong and done right |
-| `django.test.mjs` | Django: an app's `urls.py` included under a prefix, the website's requests matched to it, and absolute imports between apps reaching the other app rather than the importing app's own `apps.py` |
-| `jvm-imports.test.mjs` | Kotlin and Java: imports of top-level declarations not named after their file, names used from the file's own package or a `.*` import with no import line, the project's own packages never listed as outside ones, what must stay unlinked (comments, strings, private declarations, other packages, a name imported from elsewhere, test helpers), a package of thousands of files, and files built to slow the reading down |
-| `swift.test.mjs` | Swift: module imports and the top-level types, functions and values a file uses, through `Package.swift` targets (custom `path:`, nested and commented-out targets) or an Xcode app with no package, a name in the file's own module winning over an imported one, what must stay unlinked (nested and private declarations, a module nothing is used from, test helpers), and files built to slow the reading down |
-| `subpath-imports.test.mjs` | imports through package.json `"imports"` (`#lib/x`): the nearest package.json, the most specific key, arrays and conditions, falling back to tsconfig `paths`, near misses left unlinked, and odd or endlessly nested shapes that must not stop the scan |
-| `fastify.test.mjs` | Fastify: plugins registered with a prefix, nested registers, and the website's requests reaching the right plugin (sample in `fixtures/`) |
-| `fastify-route-options.test.mjs` | Fastify routes declared as objects (`app.route({ method, url, handler })`): method lists, keys inside `schema` left alone, a method or url that isn't written out skipped, routers with any name the file made, a non-router's `route()` left alone, and the website's requests reaching them |
-| `nestjs.test.mjs` | NestJS: endpoints from `@Controller` and `@Get`/`@Post`… decorators with their full path and method name, several controllers and other classes in one file, decorators outside a NestJS file left alone, the website's requests reaching the right controller, and Health reading `@UseGuards`, `@Public()` and an app-wide guard (`APP_GUARD`, `useGlobalGuards`) for Nest routes only, with look-alikes that must not count (rate limits, a guard on the next class) (sample in `fixtures/`) |
-| `route-tables.test.mjs` | endpoints listed as data: `{ method, path, handle }` objects with a plain path or a regular expression (captures as parameters, groups of words expanded, odd patterns dropped rather than widened), `Bun.serve({ routes })`, a website's list of its own requests left alone (`action`, `resolve` or `fetch` count only in a file that serves), Fastify route objects counted once, and Health still reading the Express routes beside a table (sample in `fixtures/`) |
-| `api-helpers.test.mjs` | requests made through an app's own helpers (`apiGet('/tasks')`, `apiSend('PATCH', …)`), a client's base address winning over a closer-looking address on the same server, and that base reaching the client's other files but not another app in the same folder |
-| `request-matching.test.mjs` | a request whose address has a part filled in at run time (`/api/users/${id}`) reaching the endpoint with a parameter there rather than a fixed sibling (`/api/users/stripe`), also once the caller's base address is known, and the method read from the call's options on the lines below its address (sample Next.js app written by the test) |
-| `url-builders.test.mjs` | web requests whose address a method of the same class builds (Angular services), directly or through another such method, and calls whose address wraps onto the next line; a builder's own template and a link that is never requested are left out, and a request on the line right after a builder is kept |
-| `route-table-keys.test.mjs` | route tables keyed by `"METHOD /path"` in JavaScript and Python: which tables count, each entry's handler, the website's requests reaching them, and Health staying quiet about their sign-in (sample in `fixtures/`) |
-| `shopify-theme.test.mjs` | Shopify themes: what counts as a theme, Liquid tags, asset_url and JSON templates linking files by name, apps as outside packages, templates as Screens, snippets nothing renders or names, what NOT MAPPED counts, look-alikes outside a theme left alone, and Liquid files built to slow the reading down |
-| `laravel.test.mjs` | PHP and Laravel: `use` imports through composer's PSR-4 folders, routes under their groups and the route files around them, endpoints placed in the controller method that answers them, Wayfinder calls and Inertia pages linked to their endpoints, and Health reading route, group, controller and form-request checks (Laravel + Inertia sample in `fixtures/`) |
-| `supabase-functions.test.mjs` | Supabase Edge Functions: each folder under `supabase/functions/` an endpoint at `/functions/v1/<name>` (`Deno.serve`, the standard library's `serve()`, `export default { fetch }`), a router inside one (Hono) moved under `/functions/v1`, `_shared/` and files other than `index` left alone, the website's `supabase.functions.invoke()` calls and `/functions/v1/` requests reaching them, and Health judging each by its own code |
-| `php-pages.test.mjs` | plain PHP sites: each script under the document root (`public/`, `public_html/`, `www/`, `htdocs/`) an endpoint at its own address, `index.php` at its folder's, while scripts other scripts include, `_` and dot folders, and a framework's front controller (an `index.php` loading Composer's autoloader) are not |
-| `firebase.test.mjs` | Firebase Cloud Functions: callables and onRequest functions as endpoints, the website's calls to them, Screens, Health, background functions (React + Firebase sample in `fixtures/`) |
-| `serverless.test.mjs` | Serverless Framework: endpoints from `http` and `httpApi` events in `serverless.yml` and the files it includes with `${file(...)}`, short and long forms, each placed in its handler's file (through a re-export, or into the function a wrapper hands the request to), the website's requests reaching them, Health reading authorizers, API keys and checks handed to a wrapper (not a handler whose own name sounds like one), each address of a handler judged on its own, background functions in the summary, and YAML with CloudFormation tags, variables, anchors, junk, stray brackets and very long lines read quickly without failing, and sample configs in test folders and configs too big to read left out (sample in `fixtures/`) |
-| `blueprint.test.mjs` | a map planned from a PRD before any code exists: plan.json errors, endpoints and calls, Screens, the design review, refreshing and switching to the real code (sample PRD in `fixtures/`) |
-| `blueprint-change.test.mjs` | changing a blueprint from the map: the agent's updated plan is checked, saved and highlighted, retried once when it fails the checks, and undone (stand-in CLI in `fixtures/fake-cli/`) |
-| `byte-order-mark.test.mjs` | JSON files that start with a byte order mark (as Windows PowerShell writes them) build, refresh, describe, plan and export like any other, while one that isn't JSON after it is still a named error |
-| `not-mapped.test.mjs` | the scan and the build say which kinds of file aren't on the map and how to add them, following `include` and counting `ignore`, and say nothing when everything is mapped |
-| `large-files.test.mjs` | files over the scan's size limit stay on the map with their line count, and the scan, Health and the map say they weren't read |
-| `sample-app.test.mjs` | a whole map of a two-repo shop: endpoints, cross-repo requests, Health, offline map, no secret values written, updates |
-| `worksheets.test.mjs` | the description worksheets quote each endpoint's code and very short files whole, within their caps, with secrets masked and `.env`-style files never quoted, and list the files that import, request or name each file |
-| `plain-language.test.mjs` | the build's warnings, never errors, about developer words in part labels and summaries on a map for everyone (product names and developer maps left alone, screen words such as "hook" and "component" flagged only where they mean screens, the word list kept in step with the writing guide, the `--json` shape), and about parts with many files in folders of their own |
-| `hostile-content.test.mjs` | mapping code you didn't write: hostile text in every model-written and scan-derived field leaves a page whose data parses and round-trips exactly (built, served, exported, Export button); secrets written into descriptions are masked with a warning naming the file and field, while prose, commit hashes and UUIDs stay; every page's Content-Security-Policy matches its scripts' hashes; invalid patterns are named build errors; config files and files built to slow pattern matching don't stall the scan; invisible and reordering characters are shown as markers |
-| `serve.test.mjs` | the map's server: 127.0.0.1 only, its own host names only, token and same-origin checks, nothing served from outside its folder |
-| `editor-links.test.mjs` | **Open in editor**: VS Code by default, an editor named or linked in `architecture.json` or on the map's server, paths encoded so they can't break the link, and every setting that isn't an editor's own scheme (scripts, data, web and `file:` links, quotes) refused by the build and the server and ignored by the page |
-| `export.test.mjs` | exporting a copy to share: what's left out by default, the extras when asked, the Export button's endpoint |
-| `phone.test.mjs` | phone and tablet layout: the top bar wraps instead of overflowing, icon-only buttons keep a name, 44 px touch targets, the details sheet that opens when a box is tapped, the zoom buttons in the top row, the folding description and the AI-tool note shown only while asking (checks on the built page, not a real screen) |
-| `ask.test.mjs` | asking through Claude Code or Codex: which one is used, read-only, follow-ups, sign-in errors (stand-in CLIs in `fixtures/fake-cli/`) |
-| `agents.test.mjs` | telling Claude Code from Codex, what a map built by each records and writes, and the name open.mjs gives the program that answers questions (another program answering to the `claude` command is named as itself) |
-| `unattended.test.mjs` | running without an agent session: a small driver follows `workflow.json` through a first map and a refresh with canned answers, using only `--json` and exit codes; the optional plain-language step (reworded, left alone, rejected for changing more than wording, or failed, with the map completing every time); nothing written outside `floorplan/`, a map that names no agent, git failures that fail loudly, the workflow file's names and schemas, `maskSecrets` as a stable export, and no change without unattended mode |
-| `read-only-install.test.mjs` | a skill whose files are read-only builds a map twice, and the files it puts next to the map stay writable, including over read-only ones an earlier version left (skips itself where read-only doesn't stop the user writing) |
-| `release.test.mjs` | the version agrees across both plugins' `plugin.json`, the README badge, the changelog and `CHECKSUMS.txt` |
-| `supply-chain.test.mjs` | what the plugin can do stays what [Is it safe to install?](is-it-safe.md) says: no hooks, MCP servers or dependencies, one outbound request, a fixed list of programs and pre-approved scripts, no code loaded at run time, the vendored layout engine unchanged |
-| `touch.test.mjs` | touch gestures: a drag follows one finger and ends on a cancelled touch, two-finger pinch and pan, nothing re-fits the map mid-gesture (checks on the built page, not a real screen) |
-| `sandboxed.test.mjs` | a map whose browser refuses storage, the clipboard or new windows (a sandboxed frame, strict settings): settings kept in memory for the visit, no tour on its own, `#tour=0`, "Copied" only when it was, the address shown when a window is blocked, and nothing changed where storage works (the page's own code run against a pretend browser, not a real frame) |
+## Releasing
 
-Sample projects are written to a temp folder by `helpers.mjs` (`shopApp()`) or copied from `tests/fixtures/`. Anything secret-looking is assembled at runtime, so no real-looking key is ever committed.
-
-When you fix a bug in what Floorplan detects, add a sample that shows it, and check the test fails without your fix.
-
-## Extending the viewer
-
-Files in `skills/floorplan/assets/ui/` are inlined into every map, in name order. They talk to the viewer only through `window.Floorplan`, which offers:
-- the graph and lookups;
-- navigation (`go`, `open`, `reveal`, `showBoard`, `playFlow`);
-- `addHeaderButton` and `addPanelSection('overview' | 'item', fn)`;
-- `modal`, `toast`, `store` (settings for this browser; `store.persistent` is false when the browser won't keep them past this visit, and they're held in memory instead);
-- `copy(text)`, which resolves true only when the text was really copied and otherwise shows it to copy by hand, and `openWindow(url)`, which shows the address when the browser blocks a new window. Use these rather than `navigator.clipboard` or `window.open`, so the map behaves in a sandboxed frame too;
-- events (`on('ready' | 'render' | 'panel' | 'technical')`);
-- `exported`, set in an exported copy: leave out anything there that needs Claude, Codex or the map's server.
-
-`20-health.js` and `25-recent.js` are good examples.
-
-## Adding an agent
-
-There are two lists, and an agent can be on one or both:
-- **The agent that built the map**, in `scripts/lib/agent.mjs`: an entry in `DETECT` that recognises it from the variables it sets for every command it runs. The map records it, so its prompts name the right agent.
-- **The agent that answers questions**, in `assets/serve.mjs`: an entry in `ENGINES` with its name, where to get it, `find` (where its CLI lives, plus a `--<name> <path>` override) and `run` (the arguments and how to read its output into progress and an answer).
-
-An engine must be read-only in a way its CLI enforces, not only because the prompt asks; if it can't be, say so plainly in the docs. Set `structured: true` only when the CLI holds answers to the schema, because changing a blueprint from the map relies on it; without it, the map doesn't offer Change. Never take the command to run from the page or from saved settings. Add a stand-in CLI to `tests/fixtures/fake-cli/` and tests like `ask.test.mjs`.
-
-## Guidelines
-
-- **No dependencies.** The scripts must run anywhere Node 18+ does, with nothing to install.
-- **Plain language first.** Anything the map shows people should make sense to an app's owner, not just its engineers.
-- **Never store or print secret values.** Health findings record where a secret is and a masked hint, never the value.
-- **One description of the process.** `workflow.json` describes the same steps as SKILL.md, for running Floorplan without an agent session ([unattended.md](unattended.md)). When you change one, change the other, and point at `references/` rather than repeating them.
-- **Keep examples generic.** Code comments, docs and prompts must not describe any real private project.
-
-## Maintaining
-
-### Branches and commits
-
-- `main` is always releasable. Every change reaches it through its own branch, merged with a merge commit (`git merge --no-ff`), so each change reads as one unit in the history.
-- Name branches by what they are, with the issue number when there is one:
-  - `fix/4-fastapi-annotated-guards`
-  - `feat/codex-support`
-  - `docs/…`, `chore/…`
-
-  A branch made with GitHub's **Create a branch** button on an issue (`2-reaching-outside-repo`) is fine too.
-- Commit messages start with a short summary in the imperative ("Bundle the layout engine"), and the body says why.
-  - `Fixes #N` in a commit or merge message closes the issue when it reaches `main`.
-  - `Refs #N` links it without closing.
-- **Contributors' pull requests keep their commits and authorship.** Merge them with a merge commit ("Merge pull request #N from user/branch"), and resolve `CHANGELOG.md` conflicts by keeping both entries.
-- Delete branches once merged.
-
-### Versions and the changelog
-
-- Versions follow [semantic versioning](https://semver.org). Before 1.0:
-  - a patch (0.1.x) for fixes and small improvements;
-  - a minor version (0.x.0) for new features, or anything that changes what people install or run.
-- **Users only receive an update when the version changes**, so release fixes promptly rather than leaving them on `main`.
-- Every change people will notice adds a line under `## Unreleased` at the top of `CHANGELOG.md`:
-  - in plain language;
-  - crediting whoever reported or fixed it, e.g. "Reported by @name in #1, fixed by @name in #3".
-
-### Releasing
-
-1. On an up-to-date `main`, run the tests and check the manifests, including the official plugin directory's requirements:
-   ```bash
-   npm test
-   claude plugin validate . --profile directory
-   ```
-2. Bump `version` in `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`, and the version badge in `README.md`.
-3. Rename `## Unreleased` in `CHANGELOG.md` to `## X.Y.Z (YYYY-MM-DD)`.
-4. Write the release's fingerprints, after the version bump:
-   ```bash
-   node tools/checksums.mjs
-   ```
-5. Commit as `Floorplan X.Y.Z: <one-line headline>` and push `main`.
-6. Tag and push the tag. This also checks that `plugin.json` and the marketplace entry agree:
-   ```bash
-   claude plugin tag . -m "Floorplan %s" --push
-   ```
-7. On GitHub, publish a release from the tag (`floorplan--vX.Y.Z`), titled `Floorplan X.Y.Z`, with that version's changelog section as its notes.
-8. Reply on every issue and pull request the release fixes: what changed, the version, and how to get it (`claude plugin update floorplan@floorplan`).
-
-### Issues and pull requests
-
-- Reply to new issues within a few days, even if only to say you've seen them.
-  - Label each one (`bug`, `enhancement`, `question`).
-  - Assign yourself when you pick it up.
-- Ask for the shape of a problem, never for private code, secrets or screenshots of a private map.
-- Thank contributors, and credit them in the changelog and release notes.
-- Close an issue with a comment that names the release containing the fix.
-- Security reports go through [SECURITY.md](../SECURITY.md), privately. Don't discuss them in public issues until a fix is released.
+1. Bump the version: the changelog's top `## x.y.z (date)` heading, the README badge and `CHECKSUMS.txt` all name it, and [`tests/release.test.mjs`](../tests/release.test.mjs) fails until they agree.
+2. Run `node tools/checksums.mjs` to write `CHECKSUMS.txt` (SHA-256 of every file the skill runs from).
+3. `npm test` green.

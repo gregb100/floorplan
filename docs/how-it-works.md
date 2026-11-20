@@ -1,6 +1,6 @@
 # How it works
 
-Floorplan splits the work between scripts and the AI you run it in, Claude Code or Codex. The scripts do everything mechanical: finding files, parsing code, matching requests to endpoints, laying out the map. They're plain Node.js with no dependencies, and they cost no tokens. The AI does what only a reader of the code can: deciding what the parts of your app *are*, and explaining them plainly.
+Floorplan splits the work between scripts and a model. The scripts do everything mechanical: finding files, parsing code, matching requests to endpoints, laying out the map. They're plain Node.js with no dependencies, and they cost no tokens. The model does what only a reader of the code can: deciding what the parts of your app *are*, and explaining them plainly. It reads the worksheets through `tools/fp.mjs` (this fork's driver, over OpenRouter), or through whatever agent session you run the skill in.
 
 ```mermaid
 flowchart TD
@@ -65,7 +65,7 @@ Claude or Codex reads the scan summary, READMEs, setup files and entry points, t
 
 The build then assigns every file to the deepest part whose patterns match, and reports anything left over.
 
-Next, `describe.mjs` writes a worksheet for each part. A worksheet is a digest of every file and endpoint: what it defines, its doc comments, what it uses, and which files import it, send it web requests or mention it by name (so a script started from `package.json` shows who starts it). It also quotes the code of every endpoint and the whole of very short files, a few lines each and at most 120 lines a worksheet, so the AI can see when something is still a placeholder ("replies OK and keeps nothing") instead of guessing from its name. Values that might be secret are masked in those quotes, and settings files like `.env` are never quoted. The AI fills in a name and description for each, saying what the code does today. On large projects, Claude Code splits the worksheets across parallel helpers.
+Next, `describe.mjs` writes a worksheet for each part. A worksheet is a digest of every file and endpoint: what it defines, its doc comments, what it uses, and which files import it, send it web requests or mention it by name (so a script started from `package.json` shows who starts it). It also quotes the code of every endpoint and the whole of very short files, a few lines each and at most 120 lines a worksheet, so the AI can see when something is still a placeholder ("replies OK and keeps nothing") instead of guessing from its name. Values that might be secret are masked in those quotes, and settings files like `.env` are never quoted. The AI fills in a name and description for each, saying what the code does today. The driver fills worksheets in parallel (three at a time by default); an agent session can split them across parallel helpers.
 
 By default everything is written for the app's owner, not an engineer: what each thing does for the business, in everyday words. Ask for a developer-facing map and it switches to technical style.
 
@@ -76,7 +76,7 @@ By default everything is written for the app's owner, not an engineer: what each
 - connects the parts, using imports, matched requests and the AI's explicit connections;
 - runs the **Health** check;
 - detects **screens**: Next.js, React Router, Vue, SvelteKit, Remix, Nuxt, Astro, Expo, Angular, TanStack, and a Shopify theme's templates (an alternate template like `product.preorder.json` as `/products/:handle?view=preorder`);
-- writes `graph.json` and the self-contained `index.html`, noting whether Claude Code or Codex made it, so the map's Ask bar and fix prompts name the right one.
+- writes `graph.json` and the self-contained `index.html` (and `query.mjs`, its command-line lookup helper), recording what made the map.
 
 The map lays itself out in your browser with [ELK](https://eclipse.dev/elk/), so the build itself is fast.
 
@@ -86,7 +86,7 @@ After every make or update, the AI records what was just worked on in `recent-wo
 
 ## 6. Showing it
 
-`open.mjs` starts the map's small local server in the background and opens your browser. If the server is already running for this map, it's reused, and any open tab reloads itself in place instead of a new one opening.
+The map is one self-contained HTML file: `open.mjs` opens `floorplan/index.html` directly in your browser. `skills/floorplan/assets/serve.mjs` can serve the map folder on `127.0.0.1` if you prefer a local address; it adds nothing to the page, and the page makes no requests of it.
 
 ## Updates
 
@@ -106,29 +106,13 @@ Then it rebuilds. The AI only has to describe what's new or flagged, and check t
 
 Everything above is how Floorplan maps existing code, its main job. A blueprint is the other way in: a map of something that isn't built yet. The AI reads a PRD or a description and writes `floorplan/plan.json`: every file and endpoint the system would need, which screen calls which endpoint, which parts use outside services and the database, and who may use each endpoint. It also lists the stack it chose, its assumptions and the questions the PRD leaves open.
 
-`plan.mjs` turns the plan into the same scan `scan.mjs` makes from code, so the build, Screens, flows, the tour and Ask all work the same way. The differences:
+`plan.mjs` turns the plan into the same scan `scan.mjs` makes from code, so the build, Screens, flows and the tour all work the same way. The differences:
 
 - cards have dashed outlines and the board a **Blueprint** label;
 - Health becomes a **design review** of the plan: endpoints anyone could use to change data, endpoints with no decision on who may use them, open questions, and pieces nothing connects to;
-- every part has **Build this with Claude** (or Codex): a request to build that part as planned, listing its files, endpoints and what it relies on;
-- Ask answers from the plan and the PRD, since there's no code to read;
-- the Ask bar's **Change** switch takes requests like "also plan out refunds": the agent returns the updated plan, the map's server checks it with `plan.mjs` and `build.mjs` (sending problems back once), saves it and redraws the map with the changes highlighted, and **Undo** puts the previous plan back. Each design review item's **Resolve on the map** fills in that request for you: an open question just needs your answer. The agent stays read-only: only the server writes, and only `plan.json`, `architecture.json` and `recent-work.json`.
 
 Updating a blueprint redraws it from `plan.json`. Once the code exists, `refresh.mjs --from-code` maps the real code instead, and `plan.json` stays.
 
 ## Without an agent session
 
 The same pipeline runs without Claude Code or Codex: in CI, in a script, or from your own tooling, with any model that can read files and return JSON. `skills/floorplan/workflow.json` describes each step as data (which script to run, which job needs a model, what it's given and what it must answer), every script can report its result as JSON, and unattended mode keeps Floorplan to its own folder. See [Running Floorplan without an agent session](unattended.md).
-
-## Asking questions
-
-The map's server answers each question with the AI on your computer, in your project:
-
-- **Claude Code:** it runs `claude -p` with read-only tools only: reading and searching files, and `floorplan/query.mjs`, which looks things up in the map. It starts without any of your MCP servers (`--strict-mcp-config` with an empty list), since answers never use them and their tool descriptions alone can make a question too long, and it’s told not to read the map’s own generated files.
-- **Codex:** it runs `codex exec` in Codex's read-only sandbox, with the same lookups. These runs aren't saved to your Codex history, so a follow-up brings the last few questions and answers along. Codex has no option that leaves out only its MCP servers, so the ones you set up for Codex are loaded too; if questions fail as too long, turn off the ones you don't need (`enabled = false` in `~/.codex/config.toml`).
-
-It uses whichever made the map, and the other one if that isn't installed. Either way it answers with text plus the cards to show, so answers can cite real code.
-
-In the Claude app, the map asks Claude through the app instead, with the same lookups but no access to your source.
-
-The same lookups help ordinary Claude Code sessions. If you say yes after your first map, the short section Floorplan adds to `CLAUDE.local.md` tells them to check the map (`query.mjs find`, `show`, `path`, `overview`) before searching the code from scratch.

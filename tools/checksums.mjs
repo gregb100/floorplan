@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // what the plugin runs from: the skill, the plugin manifests and the marketplaces that point at them
-const PARTS = ['skills', '.claude-plugin', '.codex-plugin', '.agents', 'package.json'];
+const PARTS = ['skills', 'package.json'];
 const li = process.argv.indexOf('--list');
 const OUT = li > 0 ? path.resolve(process.argv[li + 1]) : path.join(REPO, 'CHECKSUMS.txt');
 
@@ -30,10 +30,10 @@ const hash = (root, f) => crypto.createHash('sha256').update(fs.readFileSync(pat
 
 const at = process.argv.indexOf('--check');
 if (at < 0) {
-  const version = JSON.parse(fs.readFileSync(path.join(REPO, '.claude-plugin', 'plugin.json'), 'utf8')).version;
+  const version = /^## (\d+\.\d+\.\d+) \(/m.exec(fs.readFileSync(path.join(REPO, 'CHANGELOG.md'), 'utf8'))[1];
   const lines = list(REPO).map((f) => `${hash(REPO, f)}  ${f}`);
   fs.writeFileSync(OUT, [
-    `# Floorplan ${version}: SHA-256 of every file the plugin runs from.`,
+    `# Floorplan ${version}: SHA-256 of every file the skill runs from.`,
     `# Check an installed copy: clone this release, then run node tools/checksums.mjs --check <installed folder>.`,
     ...lines, '',
   ].join('\n'));

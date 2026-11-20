@@ -45,7 +45,7 @@ test('a map builds and updates from files that start with a byte order mark', ()
 
     // the map's own server, as an export reads them: flows and dismissals
     const exported = map('copy.html');
-    execFileSync(process.execPath, [map('serve.mjs'), '--export', exported, '--include', 'flows,health'], { encoding: 'utf8' });
+    execFileSync(process.execPath, [path.join(REPO, 'skills', 'floorplan', 'assets', 'serve.mjs'), map(''), '--export', exported, '--include', 'flows,health'], { encoding: 'utf8' });
     const page = fs.readFileSync(exported, 'utf8');
     assert.match(page, /"id":"refund"/);
     assert.match(page, /"dismissed":\[\{/);

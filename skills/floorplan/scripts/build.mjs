@@ -642,28 +642,20 @@ const page = (g) => template
   .replace('/*__FLOORPLAN_DATA__*/null', () => scriptJson(g));
 const uiDir = path.join(SKILL_DIR, 'assets', 'ui');
 const uiScripts = fs.existsSync(uiDir) ? fs.readdirSync(uiDir).filter((n) => n.endsWith('.js')).sort().map((n) => `<script>/* ui/${n} */\n${scriptCode(fs.readFileSync(path.join(uiDir, n), 'utf8'))}</script>`).join('\n') : '';
-// the map on disk (and as serve.mjs serves it): only its own scripts run, and it talks to nothing but its own
-// local server. The copy for the Claude app (--artifact) gets none: the app runs its own code in that page.
+// the map on disk: only its own scripts run, and it talks to nothing at all. The copy for the Claude app
+// (--artifact) gets no policy: the app runs its own code in that page.
 const html = withPolicy(page(graph), 'local');
 fs.writeFileSync(path.join(outDir, 'index.html'), html);
 // --artifact: a copy to publish to the Claude app, without this machine's absolute path (editor links)
 // (and without the reasons on dismissed health issues, which are notes to self)
 const sharedHealth = graph.health?.dismissed ? { ...graph.health, dismissed: graph.health.dismissed.map(({ reason, ...d }) => d) } : graph.health;
 if (args.artifact) fs.writeFileSync(path.join(outDir, 'artifact.html'), page({ ...graph, ...(sharedHealth ? { health: sharedHealth } : {}), meta: { ...graph.meta, root: null, agent: 'claude' } }));
-// Self-contained helpers next to the map: ask questions through the Claude Code CLI or Codex (serve.mjs)
-// and the graph lookups it hands to them (query.mjs). They need only Node, not this skill.
+// Self-contained helper next to the map: graph lookups (query.mjs). Needs only Node, not this skill.
 fs.writeFileSync(path.join(outDir, 'query.mjs'), `${graphQuery}
 // ---- cli ----
 ${fs.readFileSync(path.join(SKILL_DIR, 'assets', 'query-cli.mjs'), 'utf8')}`);
-// Written fresh, not copied: a copy keeps the original's permissions, so a skill installed read-only left
-// read-only files here and the next build couldn't replace them. Removing first replaces one left that way.
-for (const name of ['serve.mjs', 'page-safety.mjs']) {
-  const bytes = fs.readFileSync(path.join(SKILL_DIR, 'assets', name));
-  fs.rmSync(path.join(outDir, name), { force: true });
-  fs.writeFileSync(path.join(outDir, name), bytes);
-}
-// a blueprint can be changed from the map: serve.mjs redraws it with this skill's plan.mjs and build.mjs
-if (scan.blueprint) { fs.mkdirSync(path.join(outDir, '.cache'), { recursive: true }); fs.writeFileSync(path.join(outDir, '.cache', 'skill.json'), JSON.stringify({ dir: SKILL_DIR })); }
+// Maps from an earlier version came with these; nothing uses them any more, so a copy left over is removed
+for (const name of ['serve.mjs', 'page-safety.mjs']) fs.rmSync(path.join(outDir, name), { force: true });
 // the logo and tab icon are inlined so the map stays one self-contained file
 function dataUri(name) { return 'data:image/png;base64,' + fs.readFileSync(path.join(SKILL_DIR, 'assets', name)).toString('base64'); }
 function escapeHtml(s) { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
@@ -696,7 +688,7 @@ else if (unattended) report.push(`CLAUDE.LOCAL.MD  ${claudeNote = 'left alone (u
 else if (agent === 'claude' && !args['no-claude-md']) report.push(`CLAUDE.LOCAL.MD  ${claudeNote = writeClaudeMd(root, outDir, { add: !!args['claude-md'] })}`);
 report.push(trackedWarning ? `GIT  ! ${trackedWarning}` : 'GIT  floorplan/ is kept out of git (it ignores itself)');
 report.push('');
-report.push(`✓ wrote ${path.relative(root, path.join(outDir, 'index.html'))} (${fmtNum(Math.round(html.length / 1024))} KB) and graph.json`);
+report.push(`✓ wrote ${path.relative(root, path.join(outDir, 'index.html'))} (${fmtNum(Math.round(html.length / 1024))} KB), graph.json and query.mjs`);
 if (pct > 10) report.push(`  Unassigned is ${pct.toFixed(0)}%: add nodes or globs for the directories above (or "ignore" them) and rebuild.`);
 if (!args.json) console.log(report.join('\n'));
 else {
@@ -714,8 +706,7 @@ else {
     wrote: [
       path.join(outDir, '.gitignore'), path.join(outDir, 'graph.json'), path.join(outDir, 'index.html'),
       ...(args.artifact ? [path.join(outDir, 'artifact.html')] : []),
-      path.join(outDir, 'query.mjs'), path.join(outDir, 'serve.mjs'), path.join(outDir, 'page-safety.mjs'),
-      ...(scan.blueprint ? [path.join(outDir, '.cache', 'skill.json')] : []),
+      path.join(outDir, 'query.mjs'),
     ].map(relPath),
     report: report.join('\n'),
   }));

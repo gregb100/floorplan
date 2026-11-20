@@ -77,9 +77,8 @@ export const scriptHash = (body) => `'sha256-${btoa(String.fromCharCode(...crypt
 const POLICIES = {
   // an exported copy, to share: talks to nothing
   export: { 'connect-src': "'none'" },
-  // the map in floorplan/index.html, and the page serve.mjs serves: may talk to its own local server
-  // (Ask, live reload, flows, Export, Change and Undo) and nothing else
-  local: { 'connect-src': "'self'" },
+  // the map in floorplan/index.html: self-contained, so it talks to nothing at all
+  local: { 'connect-src': "'none'" },
 };
 const MARK = 'data-floorplan-policy';
 const POLICY_TAG = new RegExp(`<meta http-equiv="Content-Security-Policy" ${MARK}="[a-z]+" content="[^"]*">\\n?`, 'g');

@@ -1,8 +1,9 @@
-// A tripwire for what the plugin can do on someone's computer. docs/is-it-safe.md promises: no hooks, no
-// MCP servers, no dependencies or install steps, nothing downloaded or run from the internet, one outbound
-// network call (the opt-in waitlist), a fixed list of programs it runs, and vendored files that match their
-// published versions. These tests fail if any of that changes, so a change like that can't slip in unnoticed,
-// in a pull request or anywhere else. If a change is intended, update this file and docs/is-it-safe.md together.
+// A tripwire for what the skill can do on someone's computer. This fork promises: no hooks, no MCP servers,
+// no plugin manifests, no dependencies or install scripts, nothing downloaded or run from the internet, no
+// outbound network calls at all, a fixed list of programs it runs, no model-CLI execution (no `claude`, no
+// `codex`, ever), no waitlist or phone-home, and vendored files that match their published versions. These
+// tests fail if any of that changes, so a change like that can't slip in unnoticed, in a pull request or
+// anywhere else. If a change is intended, update this file and docs/is-it-safe.md together.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -23,7 +24,7 @@ const sha256 = (f) => crypto.createHash('sha256').update(fs.readFileSync(f)).dig
 
 const shipped = allFiles(SKILL).map((f) => path.join(SKILL, f));
 const isVendor = (f) => rel(f).startsWith('assets/vendor/');
-// the code that runs: scripts, the map's server, the page and its add-ons (not the vendored layout engine)
+// the code that runs: scripts, the map's page and its add-ons (not the vendored layout engine)
 const code = shipped.filter((f) => /\.(mjs|js|html)$/.test(f) && !isVendor(f));
 /** Every match of `re` in the shipped code, as { file, text, line }, skipping comment lines. */
 function find(re) {
@@ -38,17 +39,16 @@ function find(re) {
   return out;
 }
 
-test('the plugin is only a skill: no hooks, MCP servers or commands that run on their own', () => {
+test('the skill is only a skill: no hooks, MCP servers, plugin manifests or commands that run on their own', () => {
   // .claude/ is the maintainer's own local settings, ignored by git
   const all = allFiles(REPO).filter((f) => !f.startsWith('.claude/'));
   assert.deepEqual(all.filter((f) => /(^|\/)(hooks\.json|\.mcp\.json|\.lsp\.json)$/.test(f) || /(^|\/)hooks\//.test(f)), [], `no hooks or MCP/LSP servers. ${UPDATE}`);
-  // documentationUrl, privacyPolicyUrl and supportUrl are only links, shown on the Claude plugin directory listing
-  assert.deepEqual(Object.keys(json('.claude-plugin/plugin.json')).sort(), ['author', 'description', 'documentationUrl', 'homepage', 'keywords', 'license', 'name', 'privacyPolicyUrl', 'repository', 'supportUrl', 'version'], `Claude Code manifest: nothing beyond the skill. ${UPDATE}`);
-  assert.deepEqual(Object.keys(json('.codex-plugin/plugin.json')).sort(), ['author', 'description', 'homepage', 'interface', 'keywords', 'license', 'name', 'repository', 'requires_local_executor', 'skills', 'version'], `Codex manifest: nothing beyond the skill. ${UPDATE}`);
-  assert.equal(json('.codex-plugin/plugin.json').skills, './skills/');
-  // both marketplaces install from this repo itself, never from somewhere else
-  assert.deepEqual(json('.claude-plugin/marketplace.json').plugins.map((p) => p.source), ['./']);
-  for (const p of json('.agents/plugins/marketplace.json').plugins) assert.equal(typeof p.source === 'string' ? p.source : p.source?.path, './', `Codex marketplace source. ${UPDATE}`);
+  // this fork ships no plugin manifests at all (upstream's .claude-plugin, .codex-plugin and .agents were removed)
+  assert.deepEqual(all.filter((f) => /(^|\/)(\.claude-plugin|\.codex-plugin|\.agents)(\/|$)/.test(f)), [], `no plugin manifests. ${UPDATE}`);
+  assert.ok(!fs.existsSync(path.join(REPO, '.claude-plugin')), 'the Claude Code plugin directory is gone');
+  assert.ok(!fs.existsSync(path.join(REPO, '.codex-plugin')), 'the Codex plugin directory is gone');
+  assert.ok(!fs.existsSync(path.join(REPO, '.agents')), 'the .agents marketplace directory is gone');
+  assert.ok(!fs.existsSync(path.join(SKILL, 'agents')), 'the agents manifest directory is gone');
 });
 
 test('nothing to install: no dependencies and no install scripts', () => {
@@ -68,22 +68,18 @@ test('the only commands pre-approved are the skill’s own scripts, and that lis
   assert.deepEqual(scripts, SCRIPTS, `scripts/ list. ${UPDATE}`);
 });
 
-test('it reaches the internet in one place: the waitlist, only when someone signs up', () => {
-  // no network modules except the map's own local server
+test('it reaches the internet nowhere: no outbound calls at all', () => {
+  // no network modules except the map's own local server, which serves a folder and nothing else
   const netImports = find(/from\s+['"](?:node:)?(https?|http2|net|tls|dgram|dns|undici)['"]|require\(\s*['"](?:node:)?(https?|http2|net|tls|dgram|dns|undici)['"]\s*\)/);
-  assert.deepEqual(netImports.map((x) => `${x.file}: ${x.text}`), [`assets/serve.mjs: from 'node:http'`], `network modules. ${UPDATE}`);
+  assert.deepEqual(netImports.map((x) => `${x.file}: ${x.text}`), ['assets/serve.mjs: from \'node:http\''], `network modules. ${UPDATE}`);
   // the server listens on this machine only
   assert.match(read(path.join(SKILL, 'assets', 'serve.mjs')), /server\.listen\(port, '127\.0\.0\.1'\);/);
   assert.doesNotMatch(read(path.join(SKILL, 'assets', 'serve.mjs')), /\.listen\([^)]*(0\.0\.0\.0|::)/);
 
-  // every request: to the map's own server, except the one waitlist call
-  const LOCAL = /^(['"`]\/|s\.url \+)/;
-  const calls = find(/\bfetch\(\s*([^,)]+)/).map((x) => ({ ...x, arg: x.m[1].trim() }));
-  const outside = calls.filter((c) => !LOCAL.test(c.arg));
-  assert.deepEqual(outside.map((c) => `${c.file}: fetch(${c.arg}`), ['assets/serve.mjs: fetch(WAITLIST_URL'], `requests that leave this computer. ${UPDATE}`);
-  assert.match(read(path.join(SKILL, 'assets', 'serve.mjs')), /const WAITLIST_URL = process\.env\.FLOORPLAN_WAITLIST_URL \|\| 'https:\/\/floorplan-waitlist-690500262396\.us-central1\.run\.app\/';/);
+  // no request of any kind, from the scripts or from the page
+  assert.deepEqual(find(/\bfetch\(/).map((x) => `${x.file}:${x.line}`), [], `fetch calls. ${UPDATE}`);
   assert.deepEqual(find(/\b(WebSocket|XMLHttpRequest|sendBeacon|importScripts)\b/).map((x) => `${x.file}: ${x.text}`), [], `other ways to reach a server. ${UPDATE}`);
-  assert.deepEqual(find(/new EventSource\(\s*(?!['"`]\/)/).map((x) => `${x.file}:${x.line}`), [], 'live reload only from the local server');
+  assert.deepEqual(find(/new EventSource\(/).map((x) => `${x.file}:${x.line}`), [], 'no event streams');
 
   // the map page loads nothing from the internet: layout engine and fonts are built in
   const page = read(path.join(SKILL, 'assets', 'viewer.html'));
@@ -100,32 +96,49 @@ test('it runs a fixed list of programs, and never through a shell', () => {
   assert.deepEqual([...new Set(names)].sort(), ['execFileSync', 'spawn'], `child_process functions used. ${UPDATE}`);
   assert.deepEqual(find(/(?<![.\w])(exec|execSync|fork|spawnSync|execFile)\(/).map((x) => `${x.file}:${x.line} ${x.text}`), [], `other ways to start programs. ${UPDATE}`);
   assert.deepEqual(find(/shell:\s*true/).map((x) => `${x.file}:${x.line}`), [], 'never through a shell');
-  // what each call starts: where/which, the Claude Code or Codex CLI, Node running the skill's own scripts,
-  // git, and the system's "open this address in the browser" command
-  const ALLOWED = new Set([
-    "process.platform === 'win32' ? 'where' : 'which'",
-    'cli.cmd',
-    'process.execPath',
-    'node',
-    "'git'",
-    'opener[0]',
-    'cmd',
-  ]);
+  // what each call starts: Node running the skill's own scripts, git, and the system's "open this address
+  // in the browser" command. No model CLI, no `claude`, no `codex`, nothing looked up with where/which.
+  const ALLOWED = new Set(['process.execPath', 'node', "'git'", 'opener[0]', 'cmd']);
   const starts = find(/\b(spawn|execFileSync)\(\s*([^,]+),/).map((x) => ({ ...x, prog: x.m[2].trim() }));
-  assert.ok(starts.length >= 8, 'found the calls');
+  assert.ok(starts.length >= 6, 'found the calls');
   assert.deepEqual(starts.filter((s) => !ALLOWED.has(s.prog)).map((s) => `${s.file}:${s.line} ${s.prog}`), [], `programs started. ${UPDATE}`);
   assert.match(read(path.join(SKILL, 'scripts', 'refresh.mjs')), /const node = process\.execPath;/);
-  // the browser openers open the map's local address and nothing else
+  // the browser openers open the map's local address or file and nothing else
   const openers = /\? \['cmd', \['\/c', 'start', '', u\]\] : process\.platform === 'darwin' \? \['open', \[u\]\] : \['xdg-open', \[u\]\]/;
   assert.match(read(path.join(SKILL, 'assets', 'serve.mjs')), openers);
   assert.match(read(path.join(SKILL, 'scripts', 'open.mjs')), openers);
 });
 
+test('no model CLI is ever named as a program to run', () => {
+  // `claude` and `codex` may appear as words in prose (docs, the map's metadata about who built it), but no
+  // program with either name is started, looked up, or handed a command line
+  assert.deepEqual(find(/\b(spawn|execFile(?:Sync)?)\s*\(\s*[^)\n]*['"`][^'"`\n]*claude/i).map((x) => `${x.file}:${x.line}`), [], 'no spawn of claude');
+  assert.deepEqual(find(/\b(spawn|execFile(?:Sync)?)\s*\(\s*[^)\n]*['"`][^'"`\n]*codex/i).map((x) => `${x.file}:${x.line}`), [], 'no spawn of codex');
+  assert.deepEqual(find(/['"`](?:claude|codex)['"`]\s*,/).map((x) => `${x.file}:${x.line} ${x.text}`), [], 'no such program as an argument');
+  assert.deepEqual(find(/\bwhich\b\s*\(\s*['"`](?:claude|codex)['"`]/).map((x) => `${x.file}:${x.line}`), [], 'neither one is looked up on the path');
+  // the page names neither one either: no agent-named buttons, prompts or copy commands
+  const page = read(path.join(SKILL, 'assets', 'viewer.html'));
+  for (const piece of ['Fix with Claude', 'Fix with Codex', 'Build this with Claude', 'Build this with Codex', 'Copy command']) assert.ok(!page.includes(piece), `the page offers no ${JSON.stringify(piece)} button`);
+});
+
+test('no waitlist, cloud or phone-home: the symbols are gone for good', () => {
+  const everywhere = shipped.filter((f) => /\.(mjs|js|html|json|txt)$/.test(f));
+  const SYMS = ['WAITLIST_URL', 'joinWaitlist', 'cloudPrompt', 'claudeEmail', 'saveCloud', '/api/cloud/', 'FloorplanCloud', '#cloud-card', 'floorplan-waitlist', 'FLOORPLAN_WAITLIST_URL', 'FLOORPLAN_NO_PROMPTS'];
+  for (const f of everywhere) {
+    const src = read(f);
+    for (const sym of SYMS) assert.ok(!src.includes(sym), `${rel(f)} still mentions ${sym}. ${UPDATE}`);
+  }
+  // and no shipped code holds a non-local address (the layout engine's license notices are vendored, and the
+  // page's SVG namespace identifiers are names, never fetched)
+  const urlRe = /https?:\/\/(?!127\.0\.0\.1|localhost|www\.w3\.org\/2000\/svg)/g;
+  for (const f of code) {
+    for (const m of read(f).matchAll(urlRe)) assert.fail(`${rel(f)} carries a non-local address: ${m[0]}. ${UPDATE}`);
+  }
+});
+
 test('no code is downloaded, decoded or built from text at run time', () => {
   assert.deepEqual(find(/(?<![.\w])eval\(/).map((x) => `${x.file}:${x.line}`), [], `eval. ${UPDATE}`);
-  // the one exception: serve.mjs loads the map's own lookup code from floorplan/query.mjs, a file the build wrote
-  assert.deepEqual(find(/new Function\(/).map((x) => x.file), ['assets/serve.mjs'], `new Function. ${UPDATE}`);
-  assert.match(read(path.join(SKILL, 'assets', 'serve.mjs')), /const coreSrc = fs\.readFileSync\(path\.join\(here, 'query\.mjs'\), 'utf8'\)/);
+  assert.deepEqual(find(/new Function\(/).map((x) => `${x.file}:${x.line}`), [], `new Function. ${UPDATE}`);
   assert.deepEqual(find(/\bimport\s*\(/).map((x) => `${x.file}:${x.line}`), [], `dynamic import. ${UPDATE}`);
   assert.deepEqual(find(/from\s+['"](?:node:)?(vm|worker_threads|inspector|wasi)['"]|new Worker\(|WebAssembly\./).map((x) => `${x.file}: ${x.text}`), [], `other ways to run code. ${UPDATE}`);
   // decoding base64: only Health reading the middle of a token it found, to tell what kind of token it is
@@ -136,8 +149,8 @@ test('no code is downloaded, decoded or built from text at run time', () => {
 
 test('every shipped file is source, text or a known kind of image or font', () => {
   const kinds = new Set(shipped.map((f) => path.extname(f).toLowerCase()));
-  assert.deepEqual([...kinds].sort(), ['.html', '.js', '.json', '.md', '.mjs', '.png', '.txt', '.woff2', '.yaml'].filter((k) => kinds.has(k)), 'kinds of file');
-  for (const k of kinds) assert.ok(['.html', '.js', '.json', '.md', '.mjs', '.png', '.txt', '.woff2', '.yaml'].includes(k), `unexpected kind of file: ${k}. ${UPDATE}`);
+  assert.deepEqual([...kinds].sort(), ['.html', '.js', '.json', '.md', '.mjs', '.png', '.txt', '.woff2'].filter((k) => kinds.has(k)), 'kinds of file');
+  for (const k of kinds) assert.ok(['.html', '.js', '.json', '.md', '.mjs', '.png', '.txt', '.woff2'].includes(k), `unexpected kind of file: ${k}. ${UPDATE}`);
 });
 
 test('vendored files are unchanged: the layout engine matches elkjs 0.9.3 on npm byte for byte', () => {

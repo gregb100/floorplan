@@ -1,28 +1,29 @@
-// Exporting a copy of the map to share: serve.mjs --export and the map's Export button (POST /api/export)
-// write the same self-contained page, marked as exported, without this computer's details or the server's
-// token, and with only the extras asked for. Health and recent work are left out unless asked for.
+// Exporting a copy of the map to share: serve.mjs --export writes the same self-contained page, marked as
+// exported, without this computer's details, and with only the extras asked for. Health and recent work are
+// left out unless asked for. The map's Export button is gone with the rest of its server-backed features; the
+// export is a command, run against the map folder.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn, execFileSync } from 'node:child_process';
-import { shopApp, run, readJson, writeJson, cleanup, FAKE_PASSWORD } from './helpers.mjs';
+import { execFileSync } from 'node:child_process';
+import { REPO, shopApp, run, readJson, writeJson, cleanup, FAKE_PASSWORD } from './helpers.mjs';
 
 const TOKEN_IN_REMOTE = 'ghp-not-a-real-token-1234';
-let root, server, base, token;
-const serveJs = () => path.join(root, 'floorplan', 'serve.mjs');
+const SERVE = path.join(REPO, 'skills', 'floorplan', 'assets', 'serve.mjs');
+let root;
 /** The graph inside an exported page. */
 const dataOf = (html) => JSON.parse(/<script>window\.FLOORPLAN = (.*?);<\/script>/s.exec(html)[1]);
 /** Runs serve.mjs --export with these arguments; returns the exported page and what it printed. */
 function exportCli(...args) {
-  const out = execFileSync(process.execPath, [serveJs(), '--export', ...args], { cwd: root, encoding: 'utf8' });
+  const out = execFileSync(process.execPath, [SERVE, path.join(root, 'floorplan'), '--export', ...args], { cwd: root, encoding: 'utf8' });
   const file = /Exported the map to (.+)/.exec(out)[1].trim();
   return { out, html: fs.readFileSync(file, 'utf8'), file };
 }
 
-before(async () => {
+before(() => {
   root = shopApp();
-  execFileSync('git', ['-C', path.join(root, 'shop-api'), 'remote', 'add', 'origin', `https://someone:${TOKEN_IN_REMOTE}@example.com/shop-api.git`]);
+  execFileSync('git', ['-C', path.join(root, 'shop-api'), 'remote', 'add', 'origin', `https://someone:***}@example.com/shop-api.git`]);
   const arch = readJson(path.join(root, 'floorplan', 'architecture.json'));
   writeJson(path.join(root, 'floorplan', 'architecture.json'), {
     ...arch,
@@ -32,23 +33,8 @@ before(async () => {
   writeJson(path.join(root, 'floorplan', 'recent-work.json'), { tasks: [{ title: 'Refunds', summary: 'Added refunds.', items: [{ ref: 'shop-api/routes/orders.js', change: 'changed', note: 'Refund endpoint.' }] }] });
   run('scan.mjs', root);
   run('build.mjs', root, '--no-claude-md');
-
-  const port = 20000 + Math.floor(Math.random() * 20000);
-  server = spawn(process.execPath, [serveJs(), '--port', String(port), '--no-open'], {
-    cwd: root, env: { ...process.env, FLOORPLAN_CLAUDE: path.join(root, 'no-such-cli'), FLOORPLAN_CODEX: path.join(root, 'no-such-cli'), FLOORPLAN_NO_PROMPTS: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  base = await new Promise((resolve, reject) => {
-    let out = '';
-    const timer = setTimeout(() => reject(new Error(`server didn't start: ${out}`)), 20000);
-    server.stdout.on('data', (d) => { out += d; const m = /Floorplan: (http:\/\/\S+)/.exec(out); if (m) { clearTimeout(timer); resolve(m[1]); } });
-    server.on('exit', (code) => reject(new Error(`server exited (${code}): ${out}`)));
-  });
-  token = /"token":"([0-9a-f]+)"/.exec(await (await fetch(base + '/')).text())[1];
 });
-after(async () => {
-  if (server && server.exitCode === null) await new Promise((resolve) => { server.once('exit', resolve); server.kill(); });
-  cleanup(root);
-});
+after(() => cleanup(root));
 
 test('the map has health, recent work, a note, a flow and a remote to leave out', () => {
   const g = dataOf(fs.readFileSync(path.join(root, 'floorplan', 'index.html'), 'utf8'));
@@ -76,8 +62,6 @@ test('by default the export keeps flows and notes, and leaves out health, recent
   const here = readJson(path.join(root, 'floorplan', 'graph.json')).meta.root;
   assert.ok(here && !html.includes(here), 'no folder path from this computer');
   assert.ok(!html.includes('FLOORPLAN_SERVER='), 'no server details');
-  assert.match(out, /no Ask bar/);
-  assert.doesNotMatch(out, /Share it only with people you trust/);
 });
 
 test('health and recent work go in only when asked for, with a warning about health', () => {
@@ -108,27 +92,4 @@ test('the exported page is still the whole map, ready to open', () => {
   assert.equal(g.routes.length, built.routes.length);
   assert.equal(g.links.length, built.links.length);
   assert.match(html, /^<!doctype html>/i);
-  assert.match(html, /ui\/60-export\.js/);
-});
-
-const api = (body, headers = {}) => fetch(base + '/api/export', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
-
-test('the Export button needs the map page’s token', async () => {
-  assert.equal((await api({ include: ['flows'] })).status, 403);
-  assert.equal((await api({ include: ['flows'] }, { 'x-floorplan-token': 'wrong' })).status, 403);
-});
-
-test('the Export button downloads the copy, with flows requested since the last build', async () => {
-  const extra = { id: 'custom-1', title: 'Admin deletes a user', description: '', steps: [{ ref: 'web', note: 'First.' }, { ref: 'api', note: 'Then.' }] };
-  const r = await api({ include: ['flows', 'health'], flows: [extra, { id: 'bad', steps: 'nope' }] }, { 'x-floorplan-token': token });
-  assert.equal(r.status, 200);
-  assert.match(r.headers.get('content-type'), /text\/html/);
-  assert.equal(r.headers.get('content-disposition'), 'attachment; filename="shop-map.html"');
-  const g = dataOf(await r.text());
-  assert.deepEqual(g.meta.exported.include, ['flows', 'health']);
-  assert.deepEqual(g.flows.map((f) => f.id), ['refund', 'custom-1']);
-  assert.equal(g.flows[1].custom, true);
-  assert.ok(g.files.every((f) => !('note' in f)), 'notes weren’t ticked');
-  assert.equal(g.recent, undefined);
-  assert.ok(g.health);
 });

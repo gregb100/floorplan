@@ -6,7 +6,7 @@ You write two files in `floorplan/`:
 - `plan.json`: the files, endpoints and connections the system would have (this file).
 - `architecture.json`: the parts, outside services, flows and tour, exactly as for a code map ([schema.md](schema.md)).
 
-`plan.mjs` turns `plan.json` into the scan `build.mjs` expects, so everything after that works as for real code. Cards are drawn with dashed outlines and a **Blueprint** label, Health becomes a **design review** of the plan, and every part has a **Build this with Claude** (or Codex) button with a ready request to build it.
+`plan.mjs` turns `plan.json` into the scan `build.mjs` expects, so everything after that works as for real code. Cards are drawn with dashed outlines and a **Blueprint** label, and Health becomes a **design review** of the plan.
 
 Contents: [Planning well](#planning-well) · [plan.json](#planjson) · [Checks](#what-the-design-review-checks)
 
@@ -73,7 +73,8 @@ plan.mjs's "calls to planned endpoints" counts each call; the build's "http" lin
 
 ## Changes from the map
 
-When the map is open through its server (open.mjs), the Ask bar has an **Ask / Change** switch. A change request ("also plan out refunds", "drop the admin page") goes to the same agent, read-only. It replies with the complete updated plan.json and architecture.json, and the server checks them with plan.mjs and build.mjs. If the checks fail, or new files fall under no part, it sends the problems back once. Then it saves the files, redraws the map (open tabs reload), and highlights the new and changed cards as recent work, with **Undo**. The replaced files are kept in `floorplan/.cache/history/`. Each design review item has **Resolve on the map**, which puts a ready request in Change mode: an open question's request ends with "My answer:" for the person to finish, and the agent then removes the question and builds the answer into the plan. Changes you make by hand or through this skill work the same way: edit the files and run refresh.mjs.
+Change a blueprint by editing `plan.json` and `architecture.json` and running `refresh.mjs`, which redraws it from plan.json. Changes made through this skill work the same way.
+
 
 ## What the design review checks
 
@@ -83,4 +84,4 @@ When the map is open through its server (open.mjs), the Ask bar has an **Ask / C
 - endpoints no planned screen or service calls;
 - planned files connected to nothing.
 
-Each has **Resolve on the map** when the map is served (see above), and otherwise **Resolve with Claude/Codex**, a request to paste into the agent.
+Each names the files and endpoints it's about, so settling it is a matter of editing the plan and re-running the build.

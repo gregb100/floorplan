@@ -1,111 +1,87 @@
 # Getting started
 
-Prefer to watch? The [walkthrough video](https://youtu.be/NTUUzC7L_NQ) covers installing Floorplan and touring a finished map.
+Floorplan maps a codebase: it scans the files, imports, endpoints and web requests, a model names the parts and describes every file, and the result is one self-contained HTML page you can open anywhere.
 
-Floorplan works in **Claude Code** and in **Codex**. Making and using a map is the same in both; only installing differs. This guide shows Claude Code, and [Floorplan in Codex](codex.md) has the Codex steps.
-
-## What you need
-
-- **Claude Code** (the Code tab in the Claude desktop app, or the Claude Code CLI in a terminal), or **Codex** (the app or the CLI, signed in with ChatGPT).
-- **[Node.js](https://nodejs.org) 18 or newer.** Floorplan's scripts run on it. Check with `node --version`.
-- **With Claude Code, recommended: the [Claude Code CLI](https://code.claude.com/docs/en/overview)**, even if you mainly use the desktop app. With it, the map's Ask bar can read your actual code when answering questions. Codex needs nothing extra: its app includes what the Ask bar uses.
-
-## Install
-
-**In Codex**, open **Plugins → Add a marketplace**, enter `haydenschmitty/floorplan`, and install Floorplan. Details in [Floorplan in Codex](codex.md#install).
-
-**In Claude Code**, run these once, in any terminal:
-
-```bash
-claude plugin marketplace add haydenschmitty/floorplan
-claude plugin install floorplan@floorplan
-```
-
-The first command adds this repository as a plugin source. The second installs Floorplan for all your projects. The desktop app and the CLI share the same settings, so it shows up in both.
-
-**Start a new session** afterwards. Plugins load when a session starts.
-
-> In the Claude desktop app you can also browse plugins with the **+** button next to the prompt box (**Add plugins**, or **Plugins → Browse plugins**). It lists plugins from marketplaces you've already added.
+Floorplan runs on **Node.js 18 or newer** (check with `node --version`) and, for the model steps, an **[OpenRouter](https://openrouter.ai) API key** in `$OPENROUTER_API_KEY`.
 
 ## Make your first map
 
-1. **Open your project.** In the Claude desktop app's Code tab, choose your project's folder in the row under the prompt box before sending your first message. In the Codex app, open the project's folder. In a terminal, run `claude` or `codex` from the project folder.
+From a checkout of this repository:
 
-   If your app is split across several repos (say `web/` and `api/` side by side), open the folder that contains them all. Floorplan maps them together and connects the requests between them.
+```bash
+node tools/fp.mjs run <your project's folder>
+```
 
-2. **Ask for it:**
+That scans the project, plans its parts, describes every file and endpoint, and builds the map: `<project>/floorplan/index.html`. Run it on a folder that holds several repos side by side and it maps them together, connecting the requests between them.
 
-   > Make me a floorplan of this app.
+What happens, step by step:
 
-   In Claude Code you can also pick **floorplan** from the **/** menu, or type `/floorplan:floorplan`. In Codex, type `$floorplan`.
+- A scan lists every file, import, endpoint and web request. This takes seconds and costs no tokens.
+- The model reads the scan summary, the README and entry points, then decides the main parts of your app and what each one is for — and the build checks its answer.
+- A worksheet per part goes back to the model: file names, definitions, doc comments, what each file uses and who uses it, and the code of every endpoint. It answers with a plain-language name and a one-line description for every file and endpoint. (Worksheets are filled three at a time.)
+- The map is built and checked: connections, Health issues and screens.
 
-3. **Let it work.** This is what happens:
-   - A scan lists every file, import, endpoint and web request. This takes seconds and costs no tokens.
-   - Claude or Codex reads your READMEs, setup files and entry points, then decides the main parts of your app and what each one is for.
-   - It writes a plain-English name and a one-line description for every file and endpoint. In Claude Code, projects with more than about 150 files are split across parallel helpers.
-   - The map is built and checked: connections, Health issues and screens.
+Every model call is logged to `<project>/floorplan/.cache/run-log.jsonl` with its token counts and cost, and every step's outcome to `driver-result.json` in the same folder.
 
-   A small app takes a few minutes, a large one longer. You may be asked to let it run Floorplan's scripts (`node …`); allow them. Codex also asks to start the map's server outside its sandbox, so the map keeps running and its Ask bar can reach Codex.
+Useful variations:
 
-4. **Look around.** The map opens by itself, in the app's browser pane or your web browser. A one-minute **Start here** tour runs the first time. The reply sums up how your app fits together and points out anything serious the Health check found.
+```bash
+node tools/fp.mjs scan <folder>                 # just the scan (floorplan/.cache/scan.json)
+node tools/fp.mjs arch <folder> --dry-run       # print the planning prompt, call nothing
+node tools/fp.mjs describe <folder>             # fill in only what's missing (re-runnable)
+node tools/fp.mjs status <folder>               # how complete the map is
+node tools/fp.mjs run <folder> --max-calls 40   # stop cleanly after 40 model calls
+node tools/fp.mjs run <folder> --model qwen/qwen3.7-flash
+```
+
+The driver writes only inside `<project>/floorplan/` (unattended mode), talks only to `openrouter.ai`, and never prints or logs your key.
+
+## Look around
+
+Open `<project>/floorplan/index.html` in any browser — that's the whole map, fonts and layout engine included, no server and no internet. Or open it via a local address:
+
+```bash
+node skills/floorplan/scripts/open.mjs <project>
+```
+
+The one-minute **Start here** tour runs the first time you open it.
 
 See [Using the map](using-the-map.md) for everything you can do on it.
 
 ## Keep it up to date
 
-After you, or your AI, have worked on the code:
+After you've worked on the code:
 
-> Update the floorplan.
+```bash
+node tools/fp.mjs update <project>
+```
 
-Floorplan re-scans and compares with the last map. Moved files keep their descriptions, deleted ones disappear, and only what's new or what changed in purpose is rewritten. A map already open in your browser reloads itself, and the cards that just changed light up green under **Recent work**.
+Floorplan re-scans and compares with the last map. Moved files keep their descriptions, deleted ones disappear, and only what's new or changed in purpose goes back to the model — so updates are quick.
 
 ## Plan something you haven't built yet
 
-Everything above is about Floorplan's main job: mapping code that already exists. It has a second use, for when there's no code yet: drawing a **blueprint** of an app from a PRD, a spec or a description of what you want to build. Open the folder you'll build it in (an empty one is fine), share the document, and ask:
-
-> Here's my PRD. Make me a floorplan of what we'd need to build.
-
-You get a **blueprint**: the same map, with every part, file, endpoint and screen the app would need, how they connect, and the outside services they rely on. Its cards have dashed outlines so you can tell it's a plan. The reply names the stack Claude or Codex chose, what it assumed, and the questions your PRD leaves open.
-
-On the map:
-- **Review** lists what the plan still has to decide, like endpoints anyone could use or open questions. **Resolve on the map** settles one: for a question, you just type your answer.
-- Switch the Ask bar to **Change** to shape the plan ("also plan out refunds"). The map redraws with what changed highlighted, and **Undo** puts it back.
-- Each part has **Build this with Claude** (or Codex), a ready request to build just that part.
-
-Once the code exists, ask Claude or Codex to "map the real code now", and the blueprint becomes a normal map. See [Blueprints](how-it-works.md#blueprints) for how it works.
+Floorplan's main job is mapping code that exists. It can also draw a **blueprint** from a PRD, a spec or a description: share the document in your agent session and ask it to make a floorplan of what you'd need to build. Every part, file, endpoint and screen the app would need, how they connect, and the outside services they rely on — with dashed cards so you can tell it's a plan. Once the code exists, `refresh.mjs --from-code` maps the real thing and the blueprint retires.
 
 ## Open the map yourself
 
-The map is a folder in your project. Either:
+The map is a folder in your project. Either open `floorplan/index.html` directly — it needs no server — or serve it on a local address:
 
 ```bash
-node floorplan/serve.mjs
+node skills/floorplan/assets/serve.mjs <project>/floorplan
 ```
 
-serves it at http://127.0.0.1:4378 with a working Ask bar, or double-click `floorplan/index.html`, where everything works except asking questions.
-
-When the map is opened for you, the server runs in the background and stops by itself two hours after you close the last tab. To stop it sooner:
+It listens on `127.0.0.1` only, serves the map folder unchanged, and adds nothing to the page. To stop a running one:
 
 ```bash
-node floorplan/serve.mjs --stop
+node skills/floorplan/assets/serve.mjs <project>/floorplan --stop
 ```
 
-## Update the plugin
-
-For Codex, see [Update or remove it](codex.md#update-or-remove-it).
-
-In Claude Code, plugins installed from GitHub don't update automatically unless you turn that on. To get the latest version:
+To share a map, export a copy — one HTML file with none of your computer's details in it:
 
 ```bash
-claude plugin update floorplan@floorplan
+node skills/floorplan/assets/serve.mjs <project>/floorplan --export
 ```
-
-Or turn on automatic updates: in a Claude Code session, run `/plugin`, open **Marketplaces**, and choose **Enable auto-update**. Either way, updates apply in your next session. See the [changelog](../CHANGELOG.md) for what changed.
 
 ## Remove it
 
-```bash
-claude plugin uninstall floorplan@floorplan
-```
-
-In Codex, see [Update or remove it](codex.md#update-or-remove-it). Then delete the `floorplan/` folder (and, if you used Claude Code, the Floorplan section of `CLAUDE.local.md`) from any project you used it in.
+Delete the `floorplan/` folder from any project you mapped. Nothing else was touched, and nothing was ever committed.

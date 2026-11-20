@@ -12,14 +12,12 @@ Floorplan writes to exactly two places in your project: the `floorplan/` folder,
 | `descriptions/*.json` | The name and description of every file and endpoint, one file per part | **Yes** |
 | `plan.json` | Blueprints only: the planned files, endpoints and screens, who may use each endpoint, the stack, assumptions and open questions. Names and descriptions live here instead of `descriptions/` | **Yes** |
 | `recent-work.json` | What was just worked on, and why. Replaced on every update | Rarely. The AI writes it |
-| `custom-flows.json` | Flows requested from the map | Only to delete one |
+| `custom-flows.json` | Flows someone once requested from the map; kept so old maps don't lose them | Only to delete one |
 | `health-dismissed.json` | Health issues you marked **Not a problem**, with your reasons | Only to undo one. **Show again** on the map does it too |
-| `serve.mjs` | Serves the map locally and answers questions through the Claude Code CLI or Codex | No |
-| `query.mjs` | Looks things up in the map from the command line; Claude and Codex use it too | No |
-| `page-safety.mjs` | How `serve.mjs` puts data into the page it serves and exports, and those pages' Content-Security-Policy | No |
+| `query.mjs` | Looks things up in the map from the command line | No |
 | `artifact.html` | A copy for opening in the Claude app, only if you asked for one | No |
-| `<project>-map.html` | An exported copy to share, only if you exported one from Claude or Codex (the map's Export button downloads it instead) | No |
-| `.cache/` | The scan, the description worksheets, the last update's changes, the running server's address, and, for a blueprint, the last 20 versions of the plan that **Undo** goes back to | No. Safe to delete, though Undo then has nothing to go back to |
+| `<project>-map.html` | An exported copy to share, only if you ran `serve.mjs --export` | No |
+| `.cache/` | The scan, the description worksheets, the last update's changes, the driver's run log and result | No. Safe to delete |
 | `.gitignore` | Keeps this whole folder out of git | No |
 
 ### Editing names and structure
@@ -31,9 +29,9 @@ Your edits to `architecture.json` and `descriptions/` are kept on every update. 
 - pin a note to a file;
 - add or change flows and the tour.
 
-Or just ask Claude or Codex ("rename 'Main server' to 'Shop API' on the floorplan").
+Or describe the change to whatever agent or model made the map ("rename 'Main server' to 'Shop API' on the floorplan").
 
-A blueprint is edited the same way, through `plan.json` and `architecture.json`, or from the map with the Ask bar's **Change** switch. The plan's format is in [`blueprint.md`](../skills/floorplan/references/blueprint.md).
+A blueprint is edited the same way, through `plan.json` and `architecture.json`. The plan's format is in [`blueprint.md`](../skills/floorplan/references/blueprint.md).
 
 The full format is in [`skills/floorplan/references/schema.md`](../skills/floorplan/references/schema.md), and the style guide for names and descriptions is in [`writing-descriptions.md`](../skills/floorplan/references/writing-descriptions.md).
 

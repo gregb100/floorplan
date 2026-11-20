@@ -1777,7 +1777,7 @@ export function buildHealth({ graph, scan, arch, root }) {
         `Security review: CORS settings that allow every website:`,
         ...cors.map((c) => `- ${c.file}:${c.line}: ${c.how}${c.credentials ? ' (with credentials)' : ''}`),
         ``,
-        `First tell me in plain words whether this server uses login cookies or sessions, and which websites legitimately call it. Then replace the allow-everything setting with an explicit list of allowed origins read from an environment variable (for example ALLOWED_ORIGINS=https://myapp.com,http://localhost:3000). Keep credentials only if the app logs in with cookies, and never combine them with "*" or with echoing back whatever origin asks. Show me the change before making it, and change nothing else.`,
+        `First tell me in plain words whether this server uses login cookies or sessions, and which websites legitimately call it. Then replace the allow-everything setting with an explicit list of allowed origins read from an environment variable (for example ALLOWED_ORIGINS, a comma-separated list of the sites that legitimately call it). Keep credentials only if the app logs in with cookies, and never combine them with "*" or with echoing back whatever origin asks. Show me the change before making it, and change nothing else.`,
       ].join('\n'),
     });
   }

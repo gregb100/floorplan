@@ -58,19 +58,11 @@ test('touch targets are at least 44 px on small and touch screens, and the zoom 
   assert.match(css, /header \.btn, #search-btn \{ height: 44px; min-width: 44px; \}/);
   assert.match(css, /header \.btn\.icon \{ width: 44px; \}/);
   assert.match(css, /#zoom button \{ width: 44px; height: 44px; \}/);
-  assert.match(css, /#ask-mode button \{ height: 44px; \}/); // the Ask / Change switch too
 });
 
-test('on a phone, asking or drafting a change closes the details sheet first, and so does the summary after a change, so nothing hides the ask bar or the summary', () => {
-  assert.match(html, /ask: \(text\) => \{ closeSheet\(\); askInput\.value = text; submitAsk\(\); \}/);
-  assert.match(html, /draftChange\(text\) \{\s*if \(!canChange\(\)\) return false;\s*closeSheet\(\);/);
-  assert.match(html, /function showChangeResult\(\) \{[\s\S]*?closeSheet\(\);[\s\S]*?sheetShell\(c\.question,/);
-});
-
-test('on a phone the details panel is a sheet at the bottom that starts closed and does not cover the ask bar', () => {
+test('on a phone the details panel is a sheet at the bottom that starts closed', () => {
   const css = media('(max-width: 700px)');
   assert.match(css, /#panel \{ top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: min\(56vh, 480px\); \}/);
-  assert.match(css, /body:not\(\.no-panel\) #ask \{ display: none; \}/);
   assert.match(css, /#panel-resize \{ display: none; \}/);
 });
 
@@ -90,7 +82,7 @@ test('the top bar height is measured, and everything under it follows', () => {
 
 test('motion is switched off for people who ask for less of it', () => {
   const css = media('(prefers-reduced-motion: reduce) and (max-width: 999px), (prefers-reduced-motion: reduce) and (pointer: coarse)');
-  assert.match(css, /#panel, body\.no-panel #panel, #viewport\.anim, #ask, #flowbar, #zoom button \{ transition: none; \}/);
+  assert.match(css, /#panel, body\.no-panel #panel, #viewport\.anim, #flowbar, #zoom button \{ transition: none; \}/);
 });
 
 /** Runs the one-line start-up script (before anything is drawn) against a pretend browser. */
@@ -119,7 +111,7 @@ test('Flows and Filters open inside the screen wherever the bar wrapped', () => 
   assert.match(media('(max-width: 999px), (max-width: 1279px) and (pointer: coarse)'), /header \.rel \{ position: static; \}[^\n]*\n  #flowmenu, #legend \{ position: fixed;/);
 });
 
-test('the zoom buttons move out from under the ask bar on tablets and phones', () => {
+test('the zoom buttons move to the top of the map, clear of the details panel, on tablets and phones', () => {
   assert.match(html, /@media \(max-width: 999px\), \(max-width: 1279px\) and \(pointer: coarse\) \{\n  header \.hr \.btn \{ width: 44px; \}[\s\S]*?#zoom \{ left: auto; right: calc\(var\(--pw\) \+ 16px\); bottom: auto; top: calc\(var\(--hh, 56px\) \+ 8px\);/);
 });
 
@@ -140,14 +132,6 @@ test('on a phone the description folds to one line, with a More / Less button th
   assert.match(html, /more\.setAttribute\('aria-expanded', String\(open\)\);/);
   assert.match(html, /store\.set\('contextOpen', !open\)/);
   assert.match(html, /desc\.inert = isPhone\(\) && long && !open;/); // the hidden lines can't be tabbed into
-});
-
-test('on a phone the warning about connecting an AI tool shows only while the ask bar is in use, and is read out when it appears', () => {
-  assert.match(media('(max-width: 700px)'), /#ask:not\(\.asking\) #ask-warn \{ display: none; \}/);
-  assert.match(html, /<div id="ask-live" role="status" aria-live="polite"><\/div>/);
-  assert.match(html, /\['pointerdown', 'touchstart', 'focusin'\]\.forEach\(\(t\) => askBox\.addEventListener\(t, \(\) => askOn\(true\)/); // a tap counts even when the input is switched off
-  assert.match(html, /askBox\.addEventListener\('focusout', \(ev\) => \{ if \(!askBox\.contains\(ev\.relatedTarget\)\) askOn\(false\); \}\);/);
-  assert.match(html, /const on = isPhone\(\) && askInput\.disabled && !warn\.hidden; if \(on\) \{ askForm\.tabIndex = 0;/); // keyboard users can reach the note when the input is switched off
 });
 
 test('on a phone the zoom buttons sit side by side in the top row, beside the search icon', () => {

@@ -1,76 +1,44 @@
 # Troubleshooting
 
-### The Ask bar says it needs the Claude Code CLI
-The map is open without a way to ask questions. Either:
-- install the [Claude Code CLI](https://code.claude.com/docs/en/overview), sign in, then ask Claude to update the floorplan or run `node floorplan/serve.mjs`;
-- or open the map in the Claude app: ask Claude to "publish my floorplan to the Claude app". Answers there come from the map only.
-
-### The CLI is installed but isn't found
-`serve.mjs` looks for `claude` on your PATH and in `~/.local/bin`. If it lives somewhere else:
+### `fp arch` or `fp describe` fails with "OPENROUTER_API_KEY is not set"
+The model steps need an [OpenRouter](https://openrouter.ai) key. Set it for the session:
 
 ```bash
-node floorplan/serve.mjs --claude /path/to/claude
+export OPENROUTER_API_KEY=sk-or-...
 ```
 
-### Codex: the Ask bar says it needs Codex
-The map's server looks for `codex` on your PATH and, on Windows, for the CLI that comes with the Codex desktop app. Install the [Codex CLI](https://developers.openai.com/codex/cli), or point the server at yours:
+(In Windows PowerShell: `$env:OPENROUTER_API_KEY = "sk-or-..."`.) The key is never printed or logged; only token counts and cost are, in `floorplan/.cache/run-log.jsonl`.
 
-```bash
-node floorplan/serve.mjs --codex /path/to/codex
-```
+### A model call failed, or OpenRouter answered an error
+The driver retries each call once on a network or HTTP hiccup, then stops with a typed reason (in `floorplan/.cache/driver-result.json`). `fp arch` and `fp describe` are resumable: fix the cause (quota, key, model name) and run the same command again; what already succeeded is kept. `--max-calls N` stops a run early, cleanly, so you can inspect cost as you go.
 
-If it says Codex isn't signed in, open the Codex app (or run `codex login`) and sign in with ChatGPT. More in [Floorplan in Codex](codex.md).
-
-### Codex: the map didn't open, or Ask stopped working after Codex opened it
-Codex runs commands in a sandbox, and the map's server needs to keep running and reach the network. Allow the server to run outside the sandbox when Codex asks, or run `node floorplan/serve.mjs` yourself from the project folder.
-
-### A question fails with "Prompt is too long"
-With Claude Code, update the map (`claude plugin update floorplan@floorplan`, then rebuild): questions now run without your MCP servers, whose tool descriptions were filling the context. With Codex, the MCP servers you set up for Codex still load, so turn off the ones you don't need (`enabled = false` under that server in `~/.codex/config.toml`).
+### A model's answer came back unusable
+`fp arch` sends the build's errors back to the model once and rebuilds; `fp describe` does the same per worksheet. If a worksheet still comes back wrong, `fp describe` stops naming it and its reason. Run `fp describe` again to retry only what's missing.
 
 ### `node` isn't recognized
-Install [Node.js](https://nodejs.org) 18 or newer, then start a new session so Claude Code or Codex picks it up.
-
-### Claude or Codex keeps asking to run `node` scripts
-In Claude Code, Floorplan pre-approves its own scripts while it's running, but it may still ask in some setups. Choose the option to always allow them for this project. Codex asks according to your approval settings; allowing Floorplan's `node` scripts for the project stops the prompts.
-
-### The skill doesn't show up
-Plugins load when a session starts, so start a new one after installing. Check that it's installed and enabled:
-
-```bash
-claude plugin list
-```
-
-Plain requests like "make me a floorplan" work without the slash command. If you do want it, it's `/floorplan:floorplan`.
-
-In Codex, check **Plugins** in the app, or run `codex plugin list`, and start a new chat after installing. To call it by name, type `$floorplan`.
+Install [Node.js](https://nodejs.org) 18 or newer.
 
 ### The map looks out of date
-Ask Claude or Codex to "update the floorplan". If a tab was already open, it reloads itself once the update finishes.
+Run `node tools/fp.mjs update <project>`. If a tab was already open, reload it: the page makes no requests, so nothing updates on its own.
 
 ### The map is blank, or stuck on "Laying out"
-Maps made before version 0.1.3 load their layout engine from the internet, so check your connection or any content blocker, or ask Claude to "update the floorplan". Newer maps have everything built in and work offline.
-
-### The Ask bar has no Change switch
-**Change** appears only on a [blueprint](getting-started.md#plan-something-you-havent-built-yet), opened through its server (`node floorplan/serve.mjs`) with the Claude Code CLI or Codex available. A map of real code doesn't have it: ask Claude Code or Codex to change the code, then update the floorplan.
-
-### A change to a blueprint failed, or I don't like it
-If the updated plan doesn't pass Floorplan's checks after a second try, nothing is saved and the map stays as it was; try asking more specifically. If a change went through but isn't what you wanted, press **Undo** in its summary, or ask for another change. The previous versions are kept in `floorplan/.cache/history/`.
+The map needs nothing from the internet — its layout engine and fonts are built into the file — so check the file finished writing (the build prints `✓ wrote floorplan/index.html`). An old map from upstream Floorplan 0.1.2 or earlier loaded its layout engine from the network; rebuild with this fork.
 
 ### A connection is missing
-Floorplan finds most web requests and imports by reading the code, but not all of them, for example requests to an address that only exists in settings. Ask Claude to add the missing connection to the floorplan; it records it in `architecture.json` and it stays on every update.
+Floorplan finds most web requests and imports by reading the code, but not all — requests to an address that only exists in settings, for instance. Add it as an explicit edge in `floorplan/architecture.json` (see [the schema](../skills/floorplan/references/schema.md)), and it stays on every update.
 
 ### A file is in the wrong part, or under "Unassigned"
-Ask Claude to move it, or edit the `paths` patterns in `floorplan/architecture.json` and ask for an update.
+Edit the `paths` patterns in `floorplan/architecture.json` and rebuild. The build's report names which directories are unassigned.
 
 ### A repo is missing from the map, or the scan lists PROBLEMS
 The scan lists each repo git couldn't list files for, with the likely fix. The usual causes:
 - **git isn't installed**, or isn't on the PATH of whatever runs Floorplan;
-- **"dubious ownership"**: git refuses a checkout owned by a different user, which is common in containers and shared folders. Mark it safe with `git config --global --add safe.directory <folder>`, then update the floorplan.
+- **"dubious ownership"**: git refuses a checkout owned by a different user, common in containers and shared folders. Mark it safe with `git config --global --add safe.directory <folder>`, then scan again.
 
-If you run Floorplan from CI or a script, [unattended mode](unattended.md) turns these into errors, so a map with a repo missing can't slip through.
+The driver runs unattended, where a repo git can't list is an error, so a map with a repo missing can't slip through.
 
 ### "floorplan/ already exists here and isn't a map"
-Your project has its own folder called `floorplan`, which Floorplan won't write into. Rename your folder, or ask Claude to build the map somewhere else; the scan and build scripts accept `--out <folder>`.
+Your project has its own folder called `floorplan`, which Floorplan won't write into. Rename your folder; the scan and build scripts accept `--out <folder>`.
 
 ### `git status` shows files under `floorplan/`
 They were committed before Floorplan started ignoring the folder. Untrack them, keeping the files on disk:
@@ -80,15 +48,15 @@ git rm -r --cached floorplan
 ```
 
 ### Port 4378 is in use
-Nothing to do. The server moves to the next free port, and the URL it prints, or that Claude gives you, is the right one.
+Nothing to do: `serve.mjs` moves to the next free port and prints the address it chose.
 
-### Stopping the background server
+### Stopping the local server
 
 ```bash
-node floorplan/serve.mjs --stop
+node skills/floorplan/assets/serve.mjs <project>/floorplan --stop
 ```
 
-It also stops by itself two hours after the last tab closes.
+(The map needs no server at all; this is only for the nicer local address.)
 
 ### Still stuck?
-[Open an issue](https://github.com/haydenschmitty/floorplan/issues/new/choose) with what you asked, what happened, whether you used Claude Code or Codex, and the output it showed. Please leave out anything private from your code.
+[Open an issue](https://github.com/haydenschmitty/floorplan/issues/new/choose) with what you ran, what happened, and the output it showed. Please leave out anything private from your code.

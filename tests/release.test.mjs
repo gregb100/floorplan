@@ -1,47 +1,21 @@
-// Release hygiene: the plugin manifests, the README badge and the changelog agree on the version,
-// so a release never ships half-bumped.
+// Release hygiene: the README badge and the changelog agree on the version, the skill is well-formed and
+// everything it points at exists, and each release ships its fingerprints — so a release never ships
+// half-bumped. (This fork ships a skill, not a plugin; the plugin manifests are gone.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { REPO, SKILL, readJson } from './helpers.mjs';
+import { REPO, SKILL } from './helpers.mjs';
 
-const plugin = readJson(path.join(REPO, '.claude-plugin', 'plugin.json'));
-const marketplace = readJson(path.join(REPO, '.claude-plugin', 'marketplace.json'));
 const read = (p) => fs.readFileSync(path.join(REPO, p), 'utf8');
+const version = /^## (\d+\.\d+\.\d+) \(/m.exec(read('CHANGELOG.md'))[1];
 
-test('the plugin version is a semantic version', () => {
-  assert.match(plugin.version, /^\d+\.\d+\.\d+$/);
+test('the README version badge matches the changelog', () => {
+  assert.match(read('README.md'), new RegExp(`badge/version-${version.replaceAll('.', '\\.')}-`));
 });
 
-test('the marketplace lists this plugin, from this repo', () => {
-  const entry = marketplace.plugins.find((p) => p.name === plugin.name);
-  assert.ok(entry, `marketplace.json lists ${plugin.name}`);
-  assert.equal(entry.source, './');
-});
-
-test('the Codex plugin matches the Claude Code plugin and points at the same skill', () => {
-  const codex = readJson(path.join(REPO, '.codex-plugin', 'plugin.json'));
-  assert.equal(codex.name, plugin.name);
-  assert.equal(codex.version, plugin.version, '.codex-plugin/plugin.json version');
-  assert.equal(codex.skills, './skills/');
-  assert.ok(fs.existsSync(path.join(REPO, 'skills', plugin.name, 'SKILL.md')));
-  for (const k of ['composerIcon', 'logo']) assert.ok(fs.existsSync(path.join(REPO, codex.interface[k])), `${k}: ${codex.interface[k]}`);
-});
-
-test('the Codex marketplace lists this plugin, from this repo', () => {
-  const codexMarket = readJson(path.join(REPO, '.agents', 'plugins', 'marketplace.json'));
-  const entry = codexMarket.plugins.find((p) => p.name === plugin.name);
-  assert.ok(entry, `.agents/plugins/marketplace.json lists ${plugin.name}`);
-  assert.deepEqual(entry.source, { source: 'local', path: './' });
-});
-
-test('the README version badge matches plugin.json', () => {
-  assert.match(read('README.md'), new RegExp(`badge/version-${plugin.version.replaceAll('.', '\\.')}-`));
-});
-
-test('the changelog has an entry for this version', () => {
-  assert.match(read('CHANGELOG.md'), new RegExp(`^## ${plugin.version.replaceAll('.', '\\.')} \\(\\d{4}-\\d{2}-\\d{2}\\)$`, 'm'));
+test('the changelog has a dated entry for this version', () => {
+  assert.match(read('CHANGELOG.md'), new RegExp(`^## ${version.replaceAll('.', '\\.')} \\(\\d{4}-\\d{2}-\\d{2}\\)$`, 'm'));
 });
 
 test('the skill has a name and description, and every file it points to exists', () => {
@@ -52,5 +26,5 @@ test('the skill has a name and description, and every file it points to exists',
 });
 
 test('CHECKSUMS.txt is for this version, so each release ships its fingerprints', () => {
-  assert.match(read('CHECKSUMS.txt'), new RegExp(`^# Floorplan ${plugin.version.replaceAll('.', '\\.')}:`), 'run node tools/checksums.mjs when bumping the version');
+  assert.match(read('CHECKSUMS.txt'), new RegExp(`^# Floorplan ${version.replaceAll('.', '\\.')}:`), 'run node tools/checksums.mjs when bumping the version');
 });

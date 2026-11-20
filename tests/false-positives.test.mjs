@@ -6,8 +6,8 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { lib, makeProject, shopApp, run, scanAndBuild, readGraph, cleanup, FAKE_PASSWORD } from './helpers.mjs';
+import { execFileSync } from 'node:child_process';
+import { REPO, lib, makeProject, shopApp, run, scanAndBuild, readGraph, cleanup, FAKE_PASSWORD } from './helpers.mjs';
 
 const { findIssues, leakyPublicVar, protectedValue, dismissalFor, withDismissed } = await lib('health.mjs');
 const secrets = (src, p = 'app/config.py', lang = 'python') => findIssues(src, { path: p, category: 'code', lang }).filter((x) => x.k === 'secret');
@@ -124,56 +124,28 @@ test('the page applies the same rule as the build', () => {
   for (const piece of [`d.severity && d.severity !== issue.severity`, `String(loc).replace(/:[^:]*$/, '')`, `left.get(l.file) || 0`]) assert.ok(ui.includes(piece), piece);
 });
 
-test('a report opens a GitHub issue for the person to send, and carries no code, fix prompt or detail', () => {
-  const ui = fs.readFileSync(new URL('../skills/floorplan/assets/ui/20-health.js', import.meta.url), 'utf8');
-  const report = /const reportText = [\s\S]*?\.join\('\\n'\);/.exec(ui)[0];
-  assert.ok(!/issue\.(fix|detail|notes)/.test(report), report);
-  assert.ok(/issues\/new/.test(ui));
-  assert.ok(!/fetch\([^)]*github/.test(ui), 'the page never sends a report itself');
-});
 
-// ---------- through the build and the server ----------
-let root, server, base, token;
+// ---------- through the build and the export ----------
+let root;
 const NOTE = 'that value is only a sample, see the wiki';
 const dataOf = (html) => JSON.parse(/<script>window\.FLOORPLAN = (.*?);<\/script>/s.exec(html)[1]);
 const mapFile = (name) => path.join(root, 'floorplan', name);
-const call = (method, body, headers = { 'x-floorplan-token': token }) => fetch(base + '/api/health/dismissed', { method, headers: { 'content-type': 'application/json', ...headers }, ...(body ? { body: JSON.stringify(body) } : {}) });
-const exportPage = async (include) => (await fetch(base + '/api/export', { method: 'POST', headers: { 'content-type': 'application/json', 'x-floorplan-token': token }, body: JSON.stringify({ include }) })).text();
+const SERVE = path.join(REPO, 'skills', 'floorplan', 'assets', 'serve.mjs');
+const exportPage = (include, file) => execFileSync(process.execPath, [SERVE, mapFile(''), '--export', file, '--include', include], { encoding: 'utf8' });
 
-before(async () => {
+before(() => {
   root = shopApp();
   run('scan.mjs', root);
   run('build.mjs', root, '--no-claude-md');
-  const port = 20000 + Math.floor(Math.random() * 20000);
-  server = spawn(process.execPath, [mapFile('serve.mjs'), '--port', String(port), '--no-open'], {
-    cwd: root, env: { ...process.env, FLOORPLAN_CLAUDE: path.join(root, 'no-such-cli'), FLOORPLAN_CODEX: path.join(root, 'no-such-codex') },
-  });
-  base = await new Promise((resolve, reject) => {
-    let out = '';
-    const timer = setTimeout(() => reject(new Error(`server didn't start: ${out}`)), 20000);
-    server.stdout.on('data', (d) => { out += d; const m = /Floorplan: (http:\/\/\S+)/.exec(out); if (m) { clearTimeout(timer); resolve(m[1].replace(/\/$/, '')); } });
-    server.on('exit', (code) => reject(new Error(`server exited (${code}): ${out}`)));
-  });
-  token = /"token":"([0-9a-f]+)"/.exec(await (await fetch(base + '/')).text())[1];
 });
-after(async () => {
-  if (server && server.exitCode === null) await new Promise((resolve) => { server.once('exit', resolve); server.kill(); });
-  cleanup(root);
-});
+after(() => cleanup(root));
 
-test('saving a dismissal needs the token', async () => {
-  assert.equal((await call('POST', { id: 'x', locations: [] }, { 'x-floorplan-token': 'wrong' })).status, 403);
-  assert.ok(!fs.existsSync(mapFile('health-dismissed.json')));
-  assert.equal((await call('POST', { locations: [] })).status, 400);
-});
-
-test('a dismissal saved on the map survives a rebuild and leaves the counts; undoing it restores them', async () => {
+test('a dismissal marked "not a problem" survives a rebuild and leaves the counts; undoing it restores them', () => {
   const first = readGraph(root).health;
   const target = first.issues.find((i) => i.kind === 'secret');
   assert.ok(target && first.summary.high > 0);
   const rec = { id: target.id, severity: target.severity, locations: target.locations.map((l) => `${l.file}:${l.line}`), reason: NOTE };
-  assert.equal((await (await call('POST', rec)).json()).dismissed.length, 1);
-  assert.equal((await (await call('POST', rec)).json()).dismissed.length, 1, 'saving twice replaces it');
+  fs.writeFileSync(mapFile('health-dismissed.json'), JSON.stringify({ dismissed: [rec] }, null, 2) + '\n');
 
   const printed = run('build.mjs', root, '--no-claude-md', '--artifact');
   const health = readGraph(root).health;
@@ -184,12 +156,16 @@ test('a dismissal saved on the map survives a rebuild and leaves the counts; und
 
   // reasons are notes to self: they stay on this computer
   assert.ok(!fs.readFileSync(mapFile('artifact.html'), 'utf8').includes(NOTE), 'not in the copy for the Claude app');
-  const exported = await exportPage(['health']);
-  assert.ok(!exported.includes(NOTE), 'not in an exported copy');
-  assert.equal(dataOf(exported).health.dismissed[0].id, target.id, 'though the copy still sets the issue apart');
-  assert.equal(dataOf(await exportPage([])).health, undefined);
+  const exported = mapFile('copy.html');
+  exportPage('health', exported);
+  const page = fs.readFileSync(exported, 'utf8');
+  assert.ok(!page.includes(NOTE), 'not in an exported copy');
+  assert.equal(dataOf(page).health.dismissed[0].id, target.id, 'though the copy still sets the issue apart');
+  const bare = mapFile('bare.html');
+  exportPage('none', bare);
+  assert.equal(dataOf(fs.readFileSync(bare, 'utf8')).health, undefined);
 
-  assert.deepEqual((await (await call('DELETE', { id: target.id })).json()).dismissed, []);
+  fs.rmSync(mapFile('health-dismissed.json'));
   run('build.mjs', root, '--no-claude-md');
   assert.deepEqual(readGraph(root).health.summary, first.summary);
   assert.equal(readGraph(root).health.dismissed, undefined);

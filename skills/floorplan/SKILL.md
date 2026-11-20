@@ -25,7 +25,7 @@ The scripts do the mechanical work: finding repos, parsing imports and routes, m
 Existing map: !`node ${CLAUDE_SKILL_DIR}/scripts/status.mjs || true`
 Arguments: $ARGUMENTS
 
-**In Codex** (or any agent that left the two lines above unfilled): `${CLAUDE_SKILL_DIR}` in every command here means this skill's folder, the one holding this SKILL.md, so use its path. Run `node <that folder>/scripts/status.mjs` from the codebase root yourself to see whether a map exists, and take the path and `--refresh` from the user's request. The scripts notice they're running under Codex, so the map's Ask bar and "Fix with" prompts use Codex.
+**In Codex** (or any agent that left the two lines above unfilled): `${CLAUDE_SKILL_DIR}` in every command here means this skill's folder, the one holding this SKILL.md, so use its path. Run `node <that folder>/scripts/status.mjs` from the codebase root yourself to see whether a map exists, and take the path and `--refresh` from the user's request.
 
 ## Nothing built yet? Draw a blueprint
 
@@ -37,7 +37,7 @@ If the user wants to plan something they haven't built ("here's my PRD", "I want
 4. **Write `floorplan/architecture.json`** as for a code map (parts, external nodes for the services and data plan.json names, 1–3 flows for the PRD's main user stories, a tour), with globs covering the planned paths. Plain language for everyone, as in step 4 below.
 5. **Run `node ${CLAUDE_SKILL_DIR}/scripts/plan.mjs <root>`, then build.mjs** (step 5 below). Fix what they report until both are clean. Skip describe.mjs and recent.mjs: names and descriptions come from plan.json. A blueprint adds no notes to CLAUDE.local.md, since there's no code to look up yet.
 6. **Show it** with open.mjs (step 8).
-7. **Report** (instead of step 8's report): the URL; the shape of the system in 3–5 lines; the stack you chose; your main assumptions; and the design review's questions and warnings. Tell them each part has **Build this with Claude** (or Codex) for a ready request to build just that part; that they can switch the map's Ask bar to **Change** and ask for additions or changes ("also plan out refunds"), and the map redraws with what changed highlighted (the design review's **Resolve on the map** fills in such a request, so open questions just need their answer); that plan.json and architecture.json are theirs to edit or to ask you to change; and that the map stays out of git.
+7. **Report** (instead of step 8's report): the shape of the system in 3–5 lines; the stack you chose; your main assumptions; and the design review's questions and warnings. Tell them plan.json and architecture.json are theirs to edit or to ask you to change, and that the map stays out of git.
 
 To change a blueprint, edit plan.json and architecture.json and run `refresh.mjs`, which redraws it from plan.json. Once the code exists and the user wants a map of it, run `refresh.mjs <root> --from-code`, then carry on as for a refresh. plan.json stays where it is.
 
@@ -118,37 +118,17 @@ The codebase root is the argument if one was given, otherwise the current direct
 
 8. **Show it, then report.** Whenever you make or update a floorplan, finish by putting it in front of the user:
    `node ${CLAUDE_SKILL_DIR}/scripts/open.mjs <root>`
-   - It starts the map's server in the background (or reuses the one already running for this map) and opens it in their browser. Tabs that are already open reload in place instead of a new one opening.
-   - It prints the URL, whether Ask works (the Claude Code CLI or Codex was found), and how to stop the server. The server also stops on its own a couple of hours after the last tab closes.
-   - **In Codex**, run open.mjs outside the sandbox (ask for escalated permissions): the server has to keep running after the command ends, and Ask needs the network to reach Codex. If that isn't allowed, give the user `node floorplan/serve.mjs` to run in their own terminal from the codebase root.
-   - If you have an in-app browser or preview tool, pass `--no-open` and open the printed URL there instead, so the map appears right beside the conversation.
-   - If this is a remote or headless machine where the user can't reach 127.0.0.1, skip open.mjs and tell them to run `node floorplan/serve.mjs` on their own machine, or offer the Claude app route (step 9).
+   - It opens `floorplan/index.html` in their browser. The map is one self-contained file: it needs no server, and it makes no requests of any kind.
+   - If you have an in-app browser or preview tool, open the file there instead, so the map appears right beside the conversation.
 
-   Then **report.** Give the URL, then describe the architecture you mapped in 3–5 lines, in the user's language, including anything surprising: cycles, god-files, dead areas, coupled subsystems. Always mention the **high-severity Health items** (`graph.health`; the build output and graph.json list them). Hard-coded passwords/keys and endpoints anyone can change data through are things the owner needs to hear about. Also pass on any check the build marks with `!` under `what was checked` (like no endpoints found in code that runs a server): that check had nothing to look at, so a short Health list there isn't a clean bill of health. Never repeat a secret's value. When the build's `NOT MAPPED` line shows many docs or config files, say in one line that the map shows only the kinds of file it names (code, unless `include` says otherwise), so a small map isn't taken for a scan that missed things, and that you can add them. Say that `architecture.json` and `descriptions/` are theirs to edit, and that after more work they can just ask to "update the floorplan", which re-reads only what changed. Give them those plain words rather than a command: in Claude Code the plugin's command is `/floorplan:floorplan` (`/floorplan` as a personal skill), and in Codex it's `$floorplan`. On a first run, mention in one line that the map stays out of git. In Claude Code, when the build said `CLAUDE.LOCAL.MD  not added`, end by asking once whether future Claude Code sessions in this project should use the map: you'd add a short note to their personal, uncommitted CLAUDE.local.md. Add it (`build.mjs <root> --claude-md`) only on a yes, and don't ask again on later updates if they said no. On an update, start with what changed for what they asked (it's highlighted under **Recent work**).
-
-## 9. Opening the map and asking questions
-
-The map has a floating Ask bar. The user types a question, and the agent answers with text plus an answer board: the relevant cards, the connections among them, a note on each card, and an optional step-by-step walkthrough. There are two ways to power it. The UI is the same either way.
-
-- **Claude Code CLI or Codex (best).** The map's server (`floorplan/serve.mjs`, started by open.mjs in step 8) serves it at http://127.0.0.1:4378, or the next free port. Each question runs on the user's own sign-in, in the codebase, read-only, so answers can cite real code:
-  - **Claude Code:** `claude -p` with the map (via `floorplan/query.mjs`) plus Read/Grep/Glob on the source. The server finds `claude` on PATH or in `~/.local/bin`.
-  - **Codex:** `codex exec` in Codex's read-only sandbox, with nothing saved to their Codex history. The server finds `codex` on PATH, or the CLI that comes with the Codex app.
-
-  It uses the agent that built the map, and falls back to the other if that one isn't installed. `--engine claude|codex` forces one, `--claude <path>` or `--codex <path>` points at an unusual install, `--model <name>` picks the model, and `--editor <name or link>` the editor **Open in editor** opens, over architecture.json's `editor` (open.mjs passes all of these through). Users can also run `node floorplan/serve.mjs` themselves at any time, and stop a background one with `node floorplan/serve.mjs --stop`.
-- **Claude app.** If you're running in the Claude app (the Artifact tool is available), offer to publish the map so they can open it there and ask questions on their own Claude account. Answers then come from the map only (names, descriptions, connections, endpoints), not the source, and the Ask bar shows a hint to install the CLI for a better experience. To publish:
-  1. `node ${CLAUDE_SKILL_DIR}/scripts/build.mjs <root> --artifact`. This writes `floorplan/artifact.html` without the machine's absolute path.
-  2. Publish that file with the Artifact tool, `capabilities: {"sample": {}}`, and keep the same file path for later publishes so the URL stays stable.
-  3. After each refresh, rebuild with `--artifact` and republish.
-
-  Publishing uploads the map (paths, names, descriptions, structure), not the source code, to their private claude.ai account. Say that before you do it.
-- **Neither:** `floorplan/index.html` still opens directly in a browser. The Ask bar explains what's needed.
+   Then **report.** Give the file path, then describe the architecture you mapped in 3–5 lines, in the user's language, including anything surprising: cycles, god-files, dead areas, coupled subsystems. Always mention the **high-severity Health items** (`graph.health`; the build output and graph.json list them). Hard-coded passwords/keys and endpoints anyone can change data through are things the owner needs to hear about. Also pass on any check the build marks with `!` under `what was checked` (like no endpoints found in code that runs a server): that check had nothing to look at, so a short Health list there isn't a clean bill of health. Never repeat a secret's value. When the build's `NOT MAPPED` line shows many docs or config files, say in one line that the map shows only the kinds of file it names (code, unless `include` says otherwise), so a small map isn't taken for a scan that missed things, and that you can add them. Say that `architecture.json` and `descriptions/` are theirs to edit, and that after more work they can just ask to "update the floorplan", which re-reads only what changed. On a first run, mention in one line that the map stays out of git. In Claude Code, when the build said `CLAUDE.LOCAL.MD  not added`, end by asking once whether future Claude Code sessions in this project should use the map: you'd add a short note to their personal, uncommitted CLAUDE.local.md. Add it (`build.mjs <root> --claude-md`) only on a yes, and don't ask again on later updates if they said no. On an update, start with what changed for what they asked (it's highlighted under **Recent work**).
 
 ### Sharing a copy
 
-When the user wants to send the map to someone (a teammate, a client, someone without Claude or Codex), export it. An export is the same single HTML file without the Ask bar, prompts for Claude or Codex, editor links, this machine's folder path or git remotes. The map's **Export** button does this from the browser; from here, run:
+When the user wants to send the map to someone (a teammate, a client), export it. An export is the same single HTML file without editor links, this machine's folder path or git remotes. Run:
 
 ```
-node floorplan/serve.mjs --export [<file>] [--include flows,notes,recent,health]
+node ${CLAUDE_SKILL_DIR}/assets/serve.mjs <root>/floorplan --export [<file>] [--include flows,notes,recent,health]
 ```
 
 It writes `floorplan/<project>-map.html` unless given a file. `--include` defaults to `flows,notes` (flows and the tour, notes pinned to files); `recent` adds recent work and `health` adds the health check, or the design review on a blueprint. Leave health out unless the user asks for it, and if they do, say that it lists the endpoints anyone can use and where secrets sit in the code (never their values), so they should only send it to people they trust. Any export shows how the app fits together (every part, file and endpoint, with names and descriptions), but not the source code.
@@ -166,12 +146,12 @@ It writes `floorplan/<project>-map.html` unless given a file. `--include` defaul
   - files nothing uses;
   - files over ~1,000 lines, which AI struggles to edit safely.
 
-  Each issue has **Show on map** (highlights the affected files and endpoints with notes) and **Fix with Claude** or **Fix with Codex** (a ready-to-paste prompt naming the exact files and lines and the safe fix). It's computed by `scripts/lib/health.mjs` during scan and build, and it never stores secret values, only the file, line and a masked hint. Treat it as a quick automatic check, not a security audit.
+  Each issue has **Show on map** (highlights the affected files and endpoints with notes). It's computed by `scripts/lib/health.mjs` during scan and build, and it never stores secret values, only the file, line and a masked hint. Treat it as a quick automatic check, not a security audit.
 - **Screens.** The build detects the app's screens (Next.js, React Router, Vue, SvelteKit, Remix, Nuxt, Astro, Expo, Angular, TanStack, Shopify theme templates) with `scripts/lib/screens.mjs`. It also works out what sits behind each one: its components, the requests it makes, the server code and data that answer them, and outside services. A **Screens** button lets people start from the page they know.
 - **Start here.** A one-minute tour runs on first open and can be replayed from the header. It uses your `tour`, or builds one automatically.
 - **Plain words by default.** Connection types read "Uses", "Web requests", "Background jobs". Common technical terms are underlined and explained on hover. **Filters → Show technical detail** switches to developer terms and shows exports.
 
-People can also use **Flows → Request a new flow** to have the agent trace something ("how does a refund get back to the customer's card?") into a step-by-step flow. With serve.mjs these are saved to `floorplan/custom-flows.json`, and every build folds them into the map (steps pointing at deleted code are dropped with a warning). Treat that file as user content: keep it on refresh, and don't edit it unless asked.
+Flows can also be written by hand: each one is an `id`, a `title` and `steps` naming what to trace, saved to `floorplan/custom-flows.json`; every build folds them into the map (steps pointing at deleted code are dropped with a warning). Treat that file as user content: keep it on refresh, and don't edit it unless asked.
 
 ## Notes
 
