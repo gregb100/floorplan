@@ -198,7 +198,7 @@ test('Health still reads the login check of an Express route in a file that also
   }, { arch: { project: { name: 'mixed', summary: 'Test fixture.' }, nodes: [{ id: 'api', label: 'API', kind: 'service', summary: 'The API.', paths: ['api/**'] }] } });
   try {
     run('scan.mjs', mixed);
-    run('build.mjs', mixed, '--no-claude-md');
+    run('build.mjs', mixed);
     const g = readGraph(mixed);
     assert.deepEqual(routeKeys(g), ['GET /api/admin/stats', 'GET /api/catalog', 'GET /api/notes']);
     assert.deepEqual(openEndpoints(g), ['GET /api/notes']);
@@ -218,7 +218,7 @@ before(() => {
   } });
   fs.cpSync(path.join(REPO, 'tests', 'fixtures', 'route-tables'), root, { recursive: true });
   run('scan.mjs', root);
-  run('build.mjs', root, '--no-claude-md');
+  run('build.mjs', root);
   graph = readGraph(root);
 });
 after(() => cleanup(root));

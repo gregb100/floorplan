@@ -32,7 +32,7 @@ test('a server whose endpoints the scan can’t see: the endpoint check says it 
     // the report says so next to HEALTH, so the agent passes it on
     assert.match(out, /HEALTH {2}nothing found\n {2}what was checked:\n {2}! Endpoint sign-in: not checked: no endpoints found, but server\.js/);
     assert.match(out, / {2}· Supabase table rules: no Supabase found/);
-    const json = JSON.parse(run('build.mjs', root, '--no-claude-md', '--json'));
+    const json = JSON.parse(run('build.mjs', root, '--json'));
     assert.deepEqual(json.health.checked, graph.health.checked);
   } finally { cleanup(root); }
 });

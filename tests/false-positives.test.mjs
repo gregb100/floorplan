@@ -136,7 +136,7 @@ const exportPage = (include, file) => execFileSync(process.execPath, [SERVE, map
 before(() => {
   root = shopApp();
   run('scan.mjs', root);
-  run('build.mjs', root, '--no-claude-md');
+  run('build.mjs', root);
 });
 after(() => cleanup(root));
 
@@ -147,7 +147,7 @@ test('a dismissal marked "not a problem" survives a rebuild and leaves the count
   const rec = { id: target.id, severity: target.severity, locations: target.locations.map((l) => `${l.file}:${l.line}`), reason: NOTE };
   fs.writeFileSync(mapFile('health-dismissed.json'), JSON.stringify({ dismissed: [rec] }, null, 2) + '\n');
 
-  const printed = run('build.mjs', root, '--no-claude-md', '--artifact');
+  const printed = run('build.mjs', root, '--artifact');
   const health = readGraph(root).health;
   assert.equal(health.summary.high, first.summary.high - 1);
   assert.equal(health.issues.length, first.issues.length, 'it stays listed');
@@ -155,7 +155,7 @@ test('a dismissal marked "not a problem" survives a rebuild and leaves the count
   assert.ok(!printed.includes(`[high] ${target.title}`), 'and the build report leaves it out');
 
   // reasons are notes to self: they stay on this computer
-  assert.ok(!fs.readFileSync(mapFile('artifact.html'), 'utf8').includes(NOTE), 'not in the copy for the Claude app');
+  assert.ok(!fs.readFileSync(mapFile('artifact.html'), 'utf8').includes(NOTE), 'not in the artifact copy');
   const exported = mapFile('copy.html');
   exportPage('health', exported);
   const page = fs.readFileSync(exported, 'utf8');
@@ -166,14 +166,14 @@ test('a dismissal marked "not a problem" survives a rebuild and leaves the count
   assert.equal(dataOf(fs.readFileSync(bare, 'utf8')).health, undefined);
 
   fs.rmSync(mapFile('health-dismissed.json'));
-  run('build.mjs', root, '--no-claude-md');
+  run('build.mjs', root);
   assert.deepEqual(readGraph(root).health.summary, first.summary);
   assert.equal(readGraph(root).health.dismissed, undefined);
 });
 
 test('a hand-broken dismissal file warns and does not break the map', () => {
   fs.writeFileSync(mapFile('health-dismissed.json'), '{ not json');
-  assert.ok(run('build.mjs', root, '--no-claude-md').includes('wrote'));
+  assert.ok(run('build.mjs', root).includes('wrote'));
   assert.ok(readGraph(root).health.issues.length > 0);
   fs.rmSync(mapFile('health-dismissed.json'));
 });

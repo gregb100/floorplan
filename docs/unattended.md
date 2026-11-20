@@ -1,6 +1,6 @@
 # Running Floorplan without an agent session
 
-Floorplan is made to run inside Claude Code or Codex, with you there. It can also run on its own: in CI, in a script, or from your own tooling, with any model that can read files and return JSON. This guide covers the three things that make that work:
+Floorplan is made to run with you there, and it runs just as well on its own: in CI, in a script, or from your own tooling, with any model that can read files and return JSON. This guide covers the three things that make that work:
 
 - **Unattended mode**, which keeps Floorplan to its own folder and makes failures fail;
 - **`--json`**, which gives each script's result as data instead of a report;
@@ -18,8 +18,8 @@ export FLOORPLAN_UNATTENDED=1
 
 (in Windows PowerShell: `$env:FLOORPLAN_UNATTENDED = "1"`), or pass `--unattended` to a script, which sets the same thing for it and for the scripts it runs (`refresh.mjs` runs `scan.mjs` and `build.mjs`). In unattended mode:
 
-- **Nothing is written outside `floorplan/`.** No `CLAUDE.local.md`, no line in `.git/info/exclude`, no moving an old Floorplan section out of `CLAUDE.md`, and an old `show-code/` map is left where it is. Git is run with `--no-optional-locks`, so even `git status` leaves the repo's own files alone.
-- **The map names no agent.** It records `"agent": "none"`, the honest label for a map made without an agent session (in CI, in scripts, from `tools/fp.mjs`). You can also set `FLOORPLAN_AGENT=none` on its own.
+- **Nothing is written outside `floorplan/`.** No project notes, no line in `.git/info/exclude`, and an old `show-code/` map is left where it is. (Outside unattended mode, the same is true: this fork writes only inside the map folder, always.) Git is run with `--no-optional-locks`, so even `git status` leaves the repo's own files alone.
+- **The map names no agent.** It carries no agent field at all, whatever built it (in CI, in scripts, from `tools/fp.mjs`).
 - **`open.mjs` starts nothing.** Nobody is there to look, so it starts no server and opens no browser.
 - **Failures fail.** See [Exit codes](#exit-codes).
 
@@ -75,8 +75,8 @@ Most also carry the human report as text (`report`, `summary` or `text`), which 
 | `health` | `kind` (`health`, or `design-review` for a blueprint), `high`, `medium`, `low`, and `important[]` ({ severity, kind, title }), and `checked[]` ({ check, label, checked, text, loud? }): one per check (`endpoints`, `supabase`, `firebase`, `stripe`, `secrets`), saying what it read or that it found nothing to read; `loud` marks a gap that matters, like code that runs a server with no endpoints found. `null` when there's none |
 | `screens` | how many screens were found |
 | `recentWork` | `cards` and `tasks` highlighted, and whether `recent-work.json` exists |
-| `agent`, `audience`, `blueprint`, `unattended`, `check` | how it was built |
-| `notes` | `claudeLocalMd`: what happened to `CLAUDE.local.md`, if anything (never anything in unattended mode); `git`: a warning when git already tracks files in `floorplan/` |
+| `audience`, `blueprint`, `unattended`, `check` | how it was built |
+| `notes` | `git`: a warning when git already tracks files in `floorplan/` |
 | `wrote[]` | the files written in the map folder; empty when there were errors or with `--check` |
 | `report` | the build's report |
 

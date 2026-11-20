@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // tools/fp.mjs — the unattended floorplan driver: scan a codebase, plan it, describe it and build its map,
-// with a model through OpenRouter. No Claude Code, no Codex, no other network.
+// with a model through OpenRouter. No coding-agent CLI, no other network.
 //
 // usage: node tools/fp.mjs <command> <repo> [flags]
 //   scan <repo>        scan the codebase (floorplan/.cache/scan.json)
@@ -40,8 +40,8 @@ const COMMANDS = ['scan', 'arch', 'build', 'describe', 'run', 'update', 'status'
 const opt = (name, dflt) => { const i = argv.indexOf('--' + name); return i >= 0 ? argv[i + 1] : dflt; };
 const has = (name) => argv.includes('--' + name);
 const cmd = argv.find((a) => COMMANDS.includes(a));
-const repoArg = argv.find((a, i) => !a.startsWith('--') && a !== cmd && !['--model', '--max-calls', '--concurrency'].includes(argv[i - 1]));
-const usage = `usage: node tools/fp.mjs <${COMMANDS.join('|')}> <repo> [--model <id>] [--dry-run] [--max-calls N] [--concurrency N]`;
+const repoArg = argv.find((a, i) => !a.startsWith('--') && a !== cmd && !['--model', '--max-calls', '--concurrency', '--include', '--audience'].includes(argv[i - 1]));
+const usage = `usage: node tools/fp.mjs <${COMMANDS.join('|')}> <repo> [--model <id>] [--dry-run] [--max-calls N] [--concurrency N] [--include code|docs] [--audience everyone|developers]`;
 if (!cmd || !repoArg) { console.error(usage); process.exit(2); }
 const repo = path.resolve(repoArg);
 if (!fs.existsSync(repo)) { console.error(`✗ no such folder: ${repo}`); process.exit(2); }
@@ -51,6 +51,24 @@ const model = opt('model', DEFAULT_MODEL);
 const dryRun = has('dry-run');
 const maxCalls = Number(opt('max-calls', Infinity));
 const concurrency = Math.max(1, Number(opt('concurrency', 3)));
+
+// ---------- pinned policy (F2): the driver decides what gets mapped and for whom, never the model ----------
+// --include code (default) or --include docs, --audience everyone (default) or developers — deliberate
+// opt-in only. The arch prompt states them, and the answer is rejected unless it carries them exactly.
+const includeOpt = opt('include', 'code');
+const audienceOpt = opt('audience', 'everyone');
+if (!['code', 'docs'].includes(includeOpt) || !['everyone', 'developers'].includes(audienceOpt)) {
+  console.error(usage + '\n  --include must be code or docs; --audience must be everyone or developers');
+  process.exit(2);
+}
+const POLICY = { include: [includeOpt], audience: audienceOpt };
+const policyProblem = (a) => {
+  const want = JSON.stringify(POLICY.include);
+  const got = Array.isArray(a?.include) ? JSON.stringify([...a.include].sort()) : null;
+  if (got !== JSON.stringify([...POLICY.include].sort())) return `set "include" to exactly ${want} (got ${JSON.stringify(a?.include) ?? 'nothing'})`;
+  if (a?.audience !== POLICY.audience) return `set "audience" to exactly ${JSON.stringify(POLICY.audience)} (got ${JSON.stringify(a?.audience) ?? 'nothing'})`;
+  return null;
+};
 const runLog = path.join(cacheDir, 'run-log.jsonl');
 
 // ---------- the skill's scripts, always unattended ----------
@@ -203,6 +221,7 @@ function archPrompt(extra) {
     `\n=== HOW FILES GET ASSIGNED ===\nEvery included file goes to exactly one node: the deepest node whose paths glob matches it wins. Give nodes broad globs (a folder) and children narrower ones. Keep files no node claims under ~10%: cover every directory in the scan summary, and prefer a catch-all node ("Tests", "Scripts and tools", "Docs") over leaving files out. External nodes (databases, third-party APIs) own no files: claim them with packages/hosts instead.`,
     `\n=== THE SCHEMA YOUR JSON MUST FOLLOW ===\n${schema}`,
     `\n=== WHAT TO WRITE ===\n- project.name, project.summary (1–3 sentences, plain words), and no "entrypoints" unless the scan shows real entry files.`,
+    `- "include": exactly ${JSON.stringify(POLICY.include)} and "audience": exactly ${JSON.stringify(POLICY.audience)} — the caller fixes both; the answer is rejected if either differs.`,
     `- nodes: 6–25 top-level and nested parts. Every node: id, label, kind, summary (one plain sentence), paths. Kind is one of ui, service, worker, library, feature, data, config, test, script, infra, external.`,
     `- Use "paths" globs relative to the repo root${(s.repos || []).length > 1 ? ' (a multi-repo root: paths start with the repo folder)' : ''}. A folder name alone matches the whole folder.`,
     `- You may add "ignore" for generated/vendored folders the scan lists, "edges" for connections static analysis can't see (queues, cron, webhooks), "flows" (2+ steps) and a 3–8 stop "tour".`,
@@ -215,7 +234,12 @@ function archPrompt(extra) {
 /** arch: write architecture.json with the model, check it with build.mjs, retry once on failure. */
 async function doArch(updateContext) {
   const archFile = path.join(mapDir, 'architecture.json');
-  if (!updateContext && fs.existsSync(archFile)) { step('arch', true, 'architecture.json already exists'); return readJsonFile(archFile); }
+  if (!updateContext && fs.existsSync(archFile)) {
+    const a = readJsonFile(archFile);
+    const stale = policyProblem(a);
+    step('arch', true, stale ? `architecture.json already exists (differs from the requested policy: ${stale})` : 'architecture.json already exists');
+    return a;
+  }
   if (!scan()) { const s = await doScan(); if (!s) return null; }
   let lastReport = updateContext || null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -233,13 +257,20 @@ async function doArch(updateContext) {
       if (attempt === 0) continue;
       return finish(false, 'arch_invalid', `the model's architecture.json is not valid: ${lastReport}`);
     }
+    const policy = policyProblem(arch);
+    if (policy) {
+      lastReport = policy;
+      step(attempt ? 'arch-retry' : 'arch', false, policy);
+      if (attempt === 0) continue;
+      return finish(false, 'arch_policy', `the model would not set the pinned include/audience twice: ${policy}`);
+    }
     fs.mkdirSync(mapDir, { recursive: true });
     fs.writeFileSync(archFile, JSON.stringify(arch, null, 2) + '\n');
     const b = runScript('build.mjs', '--json');
     const problems = (b.json?.errors || []).join('\n');
     const unassigned = b.json?.files?.unassignedPercent;
     if (b.json?.ok && unassigned <= 10) {
-      step(attempt ? 'arch-retry' : 'arch', true, b.json.ok ? `build accepted it; ${unassigned}% unassigned` : '');
+      step(attempt ? 'arch-retry' : 'arch', true, `build accepted it; ${unassigned}% unassigned; include=${JSON.stringify(arch.include)}, audience=${JSON.stringify(arch.audience)}`);
       return arch;
     }
     lastReport = `${problems || 'the build rejected the file'}${unassigned > 10 ? `\n${unassigned}% of files fall under no node's paths: add nodes or globs for the directories the report names.` : ''}\n\nBuild report:\n${(b.json?.report || b.stdout).slice(0, 4000)}`;

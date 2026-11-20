@@ -20,7 +20,7 @@ const entry = (ws, file) => {
 };
 /** Lines inside ``` fences, across the whole worksheet. */
 const quotedLines = (ws) => [...ws.matchAll(/^(```|~~~)\n([\s\S]*?)\n\1$/gm)].flatMap((m) => m[2].split('\n'));
-const mapIt = (root, arch) => { if (arch) writeJson(path.join(root, 'floorplan', 'architecture.json'), arch); run('scan.mjs', root); run('build.mjs', root, '--no-claude-md'); return run('describe.mjs', root); };
+const mapIt = (root, arch) => { if (arch) writeJson(path.join(root, 'floorplan', 'architecture.json'), arch); run('scan.mjs', root); run('build.mjs', root); return run('describe.mjs', root); };
 const ONE = (paths = ['**']) => ({ project: { name: 'App' }, nodes: [{ id: 'app', label: 'App', kind: 'service', summary: 'The app.', paths }] });
 
 let shop, ws;

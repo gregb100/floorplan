@@ -20,7 +20,7 @@ before(() => {
   } });
   fs.cpSync(path.join(REPO, 'tests', 'fixtures', 'serverless-app'), root, { recursive: true });
   summary = run('scan.mjs', root);
-  run('build.mjs', root, '--no-claude-md');
+  run('build.mjs', root);
   graph = readGraph(root);
 });
 after(() => cleanup(root));

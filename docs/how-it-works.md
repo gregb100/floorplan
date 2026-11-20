@@ -56,7 +56,7 @@ It's pattern matching, not a compiler, so it catches most connections but not al
 
 ## 3. The AI describes the system
 
-Claude or Codex reads the scan summary, READMEs, setup files and entry points, then writes `architecture.json`:
+The model (or a person) reads the scan summary, READMEs, setup files and entry points, then writes `architecture.json`:
 
 - the main parts of your app, each with a plain summary;
 - the outside services it really talks to (databases, payment providers, email);
@@ -115,4 +115,4 @@ Updating a blueprint redraws it from `plan.json`. Once the code exists, `refresh
 
 ## Without an agent session
 
-The same pipeline runs without Claude Code or Codex: in CI, in a script, or from your own tooling, with any model that can read files and return JSON. `skills/floorplan/workflow.json` describes each step as data (which script to run, which job needs a model, what it's given and what it must answer), every script can report its result as JSON, and unattended mode keeps Floorplan to its own folder. See [Running Floorplan without an agent session](unattended.md).
+The same pipeline runs on its own: in CI, in a script, or from your own tooling, with any model that can read files and return JSON. `skills/floorplan/workflow.json` describes each step as data (which script to run, which job needs a model, what it's given and what it must answer), every script can report its result as JSON, and unattended mode keeps Floorplan to its own folder. See [Running Floorplan without an agent session](unattended.md).

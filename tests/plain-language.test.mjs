@@ -11,7 +11,7 @@ import { SKILL, lib, shopApp, makeProject, run, readJson, writeJson, cleanup } f
 const ARCH_FILE = (root) => path.join(root, 'floorplan', 'architecture.json');
 /** build.mjs --json on a project: { code, json }. */
 function build(root) {
-  try { return { code: 0, json: JSON.parse(execFileSync(process.execPath, [path.join(SKILL, 'scripts', 'build.mjs'), root, '--json', '--no-claude-md'], { encoding: 'utf8', stdio: 'pipe' })) }; }
+  try { return { code: 0, json: JSON.parse(execFileSync(process.execPath, [path.join(SKILL, 'scripts', 'build.mjs'), root, '--json'], { encoding: 'utf8', stdio: 'pipe' })) }; }
   catch (e) { return { code: e.status, json: JSON.parse(String(e.stdout)) }; }
 }
 
@@ -90,7 +90,7 @@ test('a map for everyone: developer words in labels and summaries are warnings t
     assert.ok(!json.warnings.some((w) => /node "(web|pg)"/.test(w)), 'plain parts, and product names on an outside service, are left alone');
     assert.match(json.report, /plain language: node "api" uses developer words: "Express server" in its summary/);
     // the same in the plain report people read
-    assert.match(run('build.mjs', p, '--no-claude-md', '--check'), /! \d+ warning\(s\):[\s\S]*plain language: node "client"/);
+    assert.match(run('build.mjs', p, '--check'), /! \d+ warning\(s\):[\s\S]*plain language: node "client"/);
   } finally { cleanup(p); }
 });
 

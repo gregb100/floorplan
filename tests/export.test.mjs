@@ -32,7 +32,7 @@ before(() => {
   });
   writeJson(path.join(root, 'floorplan', 'recent-work.json'), { tasks: [{ title: 'Refunds', summary: 'Added refunds.', items: [{ ref: 'shop-api/routes/orders.js', change: 'changed', note: 'Refund endpoint.' }] }] });
   run('scan.mjs', root);
-  run('build.mjs', root, '--no-claude-md');
+  run('build.mjs', root);
 });
 after(() => cleanup(root));
 

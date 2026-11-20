@@ -16,8 +16,6 @@ import { buildHealth, withDismissed, dismissalFor, maskSecrets } from './lib/hea
 import { scriptJson, scriptCode, withPolicy, editorTemplate } from '../assets/page-safety.mjs';
 import { buildPlanHealth } from './lib/blueprint.mjs';
 import { buildScreens } from './lib/screens.mjs';
-import { writeClaudeMd } from './lib/claudemd.mjs';
-import { detectAgent } from './lib/agent.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = path.resolve(HERE, '..');
@@ -39,7 +37,6 @@ if (args.json) {
   });
 }
 const unattended = unattendedMode(args);
-const agent = detectAgent(args);
 const root = path.resolve(args._[0] || '.');
 const outDir = path.resolve(args.out || mapDir(root));
 const archFile = path.resolve(args.arch || path.join(outDir, 'architecture.json'));
@@ -339,7 +336,7 @@ if (fs.existsSync(customFile)) {
   }
   if (dropped) warn(`${dropped} step(s) in custom-flows.json point at code that no longer exists and were left out.`);
 }
-// "Start here" tour: 3-8 narrated stops (node id or file path), written by Claude in architecture.json
+// "Start here" tour: 3-8 narrated stops (node id or file path), written in architecture.json
 const outTour = [];
 if (arch.tour !== undefined) {
   if (!Array.isArray(arch.tour)) err('tour must be an array of { node, title, note }');
@@ -348,7 +345,7 @@ if (arch.tour !== undefined) {
     if (ref) outTour.push({ ref, title: isStr(s.title) ? s.title : '', note: isStr(s.note) ? s.note : '' });
   });
 }
-// "Recent work": what Claude just changed, per task, framed against what the user asked for
+// "Recent work": what just changed, per task, framed against what the user asked for
 // (floorplan/recent-work.json, rewritten on every make/update). Stale refs are warnings, never errors.
 let outRecent = null;
 const recentFile = path.join(outDir, 'recent-work.json');
@@ -527,7 +524,7 @@ const result = (extra) => ({
   ok: !errors.length,
   check: !!args.check,
   errors, warnings,
-  agent, audience, blueprint: !!scan.blueprint, unattended,
+  audience, blueprint: !!scan.blueprint, unattended,
   files: { total: included.length, unassigned: unassigned.length, unassignedPercent: Number(pct.toFixed(1)), include },
   // files of the kinds "include" leaves out, by kind, and how many of the included kinds "ignore" leaves out
   notMapped: { byCategory: leftOut.byCategory, ignored: leftOut.ignored },
@@ -563,7 +560,7 @@ const graph = {
   schema: 'floorplan/graph@1',
   meta: {
     generatedAt: new Date().toISOString(), scanAt: scan.generatedAt, rootName: scan.rootName, root: scan.root,
-    audience, agent,
+    audience,
     ...(editor.template ? { editor: editor.template } : {}),
     ...(scan.blueprint ? { blueprint: { source: scan.blueprint.source, stack: scan.blueprint.stack, assumptions: scan.blueprint.assumptions } } : {}),
     repos: scan.repos.map(({ path: p, name, branch, head, remote }) => ({ path: p, name, branch, head, remote })),
@@ -642,14 +639,14 @@ const page = (g) => template
   .replace('/*__FLOORPLAN_DATA__*/null', () => scriptJson(g));
 const uiDir = path.join(SKILL_DIR, 'assets', 'ui');
 const uiScripts = fs.existsSync(uiDir) ? fs.readdirSync(uiDir).filter((n) => n.endsWith('.js')).sort().map((n) => `<script>/* ui/${n} */\n${scriptCode(fs.readFileSync(path.join(uiDir, n), 'utf8'))}</script>`).join('\n') : '';
-// the map on disk: only its own scripts run, and it talks to nothing at all. The copy for the Claude app
-// (--artifact) gets no policy: the app runs its own code in that page.
+// the map on disk: only its own scripts run, and it talks to nothing at all. The copy to publish
+// elsewhere (--artifact) gets no policy: whatever hosts it runs its own code in that page.
 const html = withPolicy(page(graph), 'local');
 fs.writeFileSync(path.join(outDir, 'index.html'), html);
-// --artifact: a copy to publish to the Claude app, without this machine's absolute path (editor links)
+// --artifact: a copy to publish elsewhere, without this machine's absolute path (editor links)
 // (and without the reasons on dismissed health issues, which are notes to self)
 const sharedHealth = graph.health?.dismissed ? { ...graph.health, dismissed: graph.health.dismissed.map(({ reason, ...d }) => d) } : graph.health;
-if (args.artifact) fs.writeFileSync(path.join(outDir, 'artifact.html'), page({ ...graph, ...(sharedHealth ? { health: sharedHealth } : {}), meta: { ...graph.meta, root: null, agent: 'claude' } }));
+if (args.artifact) fs.writeFileSync(path.join(outDir, 'artifact.html'), page({ ...graph, ...(sharedHealth ? { health: sharedHealth } : {}), meta: { ...graph.meta, root: null } }));
 // Self-contained helper next to the map: graph lookups (query.mjs). Needs only Node, not this skill.
 fs.writeFileSync(path.join(outDir, 'query.mjs'), `${graphQuery}
 // ---- cli ----
@@ -677,15 +674,8 @@ if (graph.screens?.length) report.push(`SCREENS  ${graph.screens.length} detecte
 report.push(graph.recent
   ? `RECENT WORK  ${graph.recent.items.length} card(s) highlighted across ${graph.recent.tasks.length} task(s)`
   : `RECENT WORK  none highlighted${fs.existsSync(recentFile) ? '' : ' (no recent-work.json)'}`);
-// point future Claude Code sessions in this project at the map. Codex has no personal, uncommitted
-// equivalent (AGENTS.md is shared with the team), so a map built by Codex leaves the project's notes alone,
-// and so does a map made without an agent session. Unattended mode never writes outside the map folder.
-if (agent === 'codex') report.push('AGENT  Codex: questions on the map run through Codex');
-if (agent === 'none') report.push("AGENT  none: made without an agent session, so the map's prompts don't name one");
-let claudeNote = null;
+// this fork has no coding-agent concept: the build writes only inside the map folder, never project notes
 if (scan.blueprint) report.push('BLUEPRINT  planned, not built yet: drawn from floorplan/plan.json');
-else if (unattended) report.push(`CLAUDE.LOCAL.MD  ${claudeNote = 'left alone (unattended mode writes only inside the map folder)'}`);
-else if (agent === 'claude' && !args['no-claude-md']) report.push(`CLAUDE.LOCAL.MD  ${claudeNote = writeClaudeMd(root, outDir, { add: !!args['claude-md'] })}`);
 report.push(trackedWarning ? `GIT  ! ${trackedWarning}` : 'GIT  floorplan/ is kept out of git (it ignores itself)');
 report.push('');
 report.push(`✓ wrote ${path.relative(root, path.join(outDir, 'index.html'))} (${fmtNum(Math.round(html.length / 1024))} KB), graph.json and query.mjs`);
@@ -701,8 +691,8 @@ else {
     } : null,
     screens: graph.screens?.length || 0,
     recentWork: { cards: graph.recent?.items.length || 0, tasks: graph.recent?.tasks.length || 0, file: fs.existsSync(recentFile) },
-    notes: { claudeLocalMd: claudeNote, git: trackedWarning || null },
-    // files written in the map folder; anything outside it is described in notes.claudeLocalMd (never in unattended mode)
+    notes: { git: trackedWarning || null },
+    // files written in the map folder; this fork writes nothing outside it
     wrote: [
       path.join(outDir, '.gitignore'), path.join(outDir, 'graph.json'), path.join(outDir, 'index.html'),
       ...(args.artifact ? [path.join(outDir, 'artifact.html')] : []),

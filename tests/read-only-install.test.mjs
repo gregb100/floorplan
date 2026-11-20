@@ -43,7 +43,7 @@ test('a skill installed read-only builds again and again', (t) => {
   const script = (name, ...args) => execFileSync(process.execPath, [path.join(skill, 'scripts', name), root, ...args], { encoding: 'utf8', stdio: 'pipe' });
   const build = (when) => {
     let out;
-    try { out = script('build.mjs', '--no-claude-md', '--json'); } catch (e) { assert.fail(`${when} failed (exit ${e.status}):\n${e.stdout}\n${e.stderr}`); }
+    try { out = script('build.mjs', '--json'); } catch (e) { assert.fail(`${when} failed (exit ${e.status}):\n${e.stdout}\n${e.stderr}`); }
     assert.equal(JSON.parse(out).ok, true, when);
     return JSON.parse(out);
   };
@@ -73,7 +73,7 @@ test('the map folder holds only the files the build writes — a build drops not
     fs.writeFileSync(path.join(root, 'floorplan', 'page-safety.mjs'), '// an old map\'s leftover\n');
     readOnly(old);
     execFileSync(process.execPath, [path.join(SKILL, 'scripts', 'scan.mjs'), root], { encoding: 'utf8', stdio: 'pipe' });
-    const result = JSON.parse(execFileSync(process.execPath, [path.join(SKILL, 'scripts', 'build.mjs'), root, '--no-claude-md', '--json'], { encoding: 'utf8', stdio: 'pipe' }));
+    const result = JSON.parse(execFileSync(process.execPath, [path.join(SKILL, 'scripts', 'build.mjs'), root, '--json'], { encoding: 'utf8', stdio: 'pipe' }));
     assert.equal(result.ok, true);
     assert.deepEqual(result.wrote, ['floorplan/.gitignore', 'floorplan/graph.json', 'floorplan/index.html', 'floorplan/query.mjs'], 'exactly what the build owns');
     assert.ok(!fs.existsSync(old), 'the leftover serve.mjs is removed');

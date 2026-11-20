@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { REPO, SKILL, shopApp, scanAndBuild, cleanup } from './helpers.mjs';
+import { REPO, SKILL, shopApp, scanAndBuild, cleanup, readGraph } from './helpers.mjs';
 
 const allFiles = (dir) => fs.readdirSync(dir, { recursive: true, withFileTypes: true })
   .filter((e) => e.isFile())
@@ -58,6 +58,10 @@ test('(a) a built map carries no non-localhost URL either', async () => {
     assert.doesNotMatch(html, /url\(\s*["']?https?:/i, 'no external images or fonts in CSS');
     // and the map needs no runtime server: the page's own code makes no requests of any kind, and its policy
     // forbids connecting anywhere at all (route paths in the scanned data may look like addresses; they are text)
+    // (F1) the coding-agent concept is gone: no agent field in the map, no project-notes file in the repo
+    assert.ok(!('agent' in readGraph(root).meta), 'map meta carries no agent field');
+    assert.ok(!fs.existsSync(path.join(root, 'CLAUDE.local.md')), 'no project notes written');
+    assert.ok(!fs.existsSync(path.join(root, '.git', 'info', 'exclude')), 'nothing added to git exclude');
     for (const piece of ['fetch(', 'EventSource', 'XMLHttpRequest', 'sendBeacon', 'WebSocket']) assert.ok(!html.includes(piece), `the page never uses ${piece}`);
     assert.match(html, /Content-Security-Policy[^>]*content="[^"]*connect-src 'none'/, "the page's policy forbids every connection");
     // the build places no server and no policy helper beside the map
@@ -66,8 +70,8 @@ test('(a) a built map carries no non-localhost URL either', async () => {
 });
 
 // ---------- (b) no spawn or execFile of 'claude' or 'codex' ----------
-// `claude` and `codex` may be words in prose and metadata (who built a map), but no program with either
-// name is ever started, looked up, or given a command line — in the skill, the map, or the tools.
+// The words appear only as things this fork refuses to be: a program never started, looked up, or given
+// a command line — in the skill, the map, or the tools.
 test('(b) no source spawns or execs a model CLI', () => {
   const roots = [SKILL, path.join(REPO, 'tools')];
   const files = roots.flatMap((r) => allFiles(r)).filter((f) => /\.(mjs|js|html)$/.test(f) && !rel(f).includes('assets/vendor/'));
@@ -87,6 +91,29 @@ test('(b) no source spawns or execs a model CLI', () => {
       assert.equal(m, null, `${rel(f)} starts a model CLI: ${m?.[0]}`);
     }
   }
+});
+
+// ---------- (d) the coding-agent concept is gone ----------
+// This fork removed the whole Claude/Codex agent concept: no detection, no agent field in the map, no
+// CLAUDE.local.md. What may remain is only where the words name someone else's things: health.mjs's
+// secret-detection patterns (an Anthropic key found in a scanned repo), and the '.claude' project
+// folder the scan passes over without reading.
+test('(d) no coding-agent concept anywhere in the shipped code', () => {
+  const SYMS = ['writeClaudeMd', 'detectAgent', 'FLOORPLAN_AGENT', 'CLAUDE.local.md', 'no-claude-md', 'claude-md', 'codex', 'Codex'];
+  for (const f of shipped) {
+    const src = read(f);
+    for (const sym of SYMS) assert.ok(!src.includes(sym), `${rel(f)} still mentions ${sym}`);
+  }
+  // 'claude' in live code: only health.mjs's detection of other people's secrets, and the folder the scan skips
+  const hits = [];
+  for (const f of shipped) {
+    read(f).split('\n').forEach((line) => {
+      if (/^(\/\/|\*|\/\*)/.test(line.trim())) return;
+      if (/claude/i.test(line)) hits.push(`${rel(f)}: ${line.trim()}`);
+    });
+  }
+  const allowed = hits.filter((h) => /scripts\/lib\/(health|common)\.mjs: /.test(h));
+  assert.deepEqual(hits.filter((h) => !allowed.includes(h)), [], 'an agent name in live code');
 });
 
 // ---------- (c) waitlist/cloud symbols absent ----------

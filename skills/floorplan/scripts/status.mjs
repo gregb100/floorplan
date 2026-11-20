@@ -26,7 +26,7 @@ try {
     lines.push(hasPlan ? 'a blueprint was started (plan.json) but never drawn: write architecture.json if it is missing, then run plan.mjs and build.mjs.' : hasArch ? 'architecture.json exists but was never built: run build.mjs.' : 'none: no floorplan here yet (fresh run).');
   } else {
     const g = readJsonFile(graphFile);
-    Object.assign(data, { builtAt: g.meta.generatedAt, files: g.meta.counts.files, nodes: g.nodes.length, agent: g.meta.agent || null });
+    Object.assign(data, { builtAt: g.meta.generatedAt, files: g.meta.counts.files, nodes: g.nodes.length });
     if (g.meta.blueprint) {
       data.state = 'blueprint';
       lines.push(`a blueprint (planned, not built${g.meta.blueprint.source ? `, from ${g.meta.blueprint.source}` : ''}) built ${g.meta.generatedAt}: ${g.meta.counts.files} planned files, ${g.nodes.length} nodes.\nTo change the plan, edit floorplan/plan.json and architecture.json, then run refresh.mjs (it redraws from plan.json). If the code now exists and the user wants a map of it, run refresh.mjs --from-code.`);

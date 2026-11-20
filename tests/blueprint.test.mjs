@@ -12,7 +12,7 @@ before(() => {
   root = makeProject({});
   fs.cpSync(FIXTURE, root, { recursive: true });
   planOut = run('plan.mjs', root);
-  buildOut = run('build.mjs', root, '--no-claude-md');
+  buildOut = run('build.mjs', root);
   graph = readGraph(root);
 });
 after(() => cleanup(root));
@@ -54,22 +54,16 @@ test('screens call endpoints, and files reach outside services and the database'
   ]);
 });
 
-test('blueprint builds report that files are planned under both coding agents', async (t) => {
-  for (const agent of ['codex', 'claude']) {
-    await t.test(agent, () => {
-      const r = makeProject({});
-      try {
-        fs.cpSync(FIXTURE, r, { recursive: true });
-        run('plan.mjs', r, '--agent', agent);
-        const output = run('build.mjs', r, '--agent', agent, '--claude-md');
-        assert.equal(readGraph(r).meta.agent, agent);
-        assert.match(output, /BLUEPRINT {2}planned, not built yet/);
-        if (agent === 'codex') assert.match(output, /AGENT {2}Codex/);
-        assert.doesNotMatch(output, /CLAUDE\.LOCAL\.MD/);
-        assert.ok(!fs.existsSync(path.join(r, 'CLAUDE.local.md')), 'blueprints do not add project notes');
-      } finally { cleanup(r); }
-    });
-  }
+test('a blueprint build plans files, writes only inside the map folder, and names no agent', () => {
+  const r = makeProject({});
+  try {
+    fs.cpSync(FIXTURE, r, { recursive: true });
+    run('plan.mjs', r);
+    const output = run('build.mjs', r);
+    assert.match(output, /BLUEPRINT {2}planned, not built yet/);
+    assert.ok(!('agent' in readGraph(r).meta), 'map meta carries no agent field');
+    assert.ok(!fs.existsSync(path.join(r, 'CLAUDE.local.md')), 'blueprints do not add project notes');
+  } finally { cleanup(r); }
 });
 
 test('Screens show what each planned page relies on, down to Stripe', () => {
@@ -109,7 +103,7 @@ test('Health is a design review of the plan', () => {
   assert.match(buildOut, /DESIGN REVIEW {2}0 important · 3 worth fixing · 2 minor/);
 });
 
-test('the map page marks it as a blueprint, and Ask knows there is no code to read', () => {
+test('the map page marks it as a blueprint, and query.mjs knows there is no code to read', () => {
   const html = fs.readFileSync(path.join(root, 'floorplan', 'index.html'), 'utf8');
   assert.ok(html.includes('/* ui/06-blueprint.js */'));
   assert.ok(html.includes('"blueprint":{"source":"docs/prd.md"'));
@@ -165,7 +159,7 @@ test('build.mjs catches a service that is not a node', () => {
     fs.rmSync(arch);
     run('plan.mjs', r);
     fs.writeFileSync(arch, saved);
-    const out = fails(() => run('build.mjs', r, '--no-claude-md'));
+    const out = fails(() => run('build.mjs', r));
     assert.match(out, /error\(s\) in floorplan.architecture\.json or plan\.json/);
     assert.match(out, /names "strpe" in its services, which is not a node id in architecture\.json — did you mean "stripe"\?/);
   } finally { cleanup(r); }
@@ -175,19 +169,19 @@ test('refresh redraws a blueprint from plan.json, and --from-code maps the real 
   const r = withPlan(() => {});
   try {
     run('plan.mjs', r);
-    run('build.mjs', r, '--no-claude-md');
+    run('build.mjs', r);
     assert.match(run('status.mjs', r), /a blueprint \(planned, not built, from docs\/prd\.md\)/);
     const plan = readJson(path.join(r, 'floorplan', 'plan.json'));
     plan.endpoints.push({ method: 'GET', path: '/api/health', file: 'api/src/server.ts', name: 'Health check', access: 'public' });
     writeJson(path.join(r, 'floorplan', 'plan.json'), plan);
-    assert.match(run('refresh.mjs', r, '--no-claude-md'), /redrawn from floorplan\/plan\.json/);
+    assert.match(run('refresh.mjs', r), /redrawn from floorplan\/plan\.json/);
     assert.ok(routeKeys(readGraph(r)).includes('GET /api/health'));
 
     fs.mkdirSync(path.join(r, 'api', 'src'), { recursive: true });
     fs.writeFileSync(path.join(r, 'api', 'src', 'server.ts'), `import express from 'express';\nconst app = express();\napp.get('/api/health', (req, res) => res.send('ok'));\napp.listen(3000);\n`);
     // the blueprint's flows point at files that aren't written yet, so the map of the code gets its own
     writeJson(path.join(r, 'floorplan', 'architecture.json'), { project: { name: 'Pawprint', summary: 'Being built.' }, nodes: [{ id: 'api', label: 'Main server', kind: 'service', summary: 'The server.', paths: ['api/**'] }] });
-    run('refresh.mjs', r, '--from-code', '--no-claude-md');
+    run('refresh.mjs', r, '--from-code');
     const g = readGraph(r);
     assert.equal(g.meta.blueprint, undefined);
     assert.deepEqual(routeKeys(g), ['GET /api/health']);

@@ -23,7 +23,7 @@ test('a map builds and updates from files that start with a byte order mark', ()
     withBom(map('descriptions/api.json'), { files: { 'shop-api/server.js': { name: 'Shop server', description: 'Starts the shop server.' } } });
     withBom(map('recent-work.json'), { tasks: [{ title: 'Refunds', items: [{ ref: 'shop-api/routes/orders.js', change: 'changed', note: 'Added refunds.' }] }] });
     withBom(map('custom-flows.json'), { flows: [{ id: 'refund', title: 'A refund', steps: [{ ref: 'f:shop-web/src/api.js', note: 'asks' }, { ref: 'f:shop-api/routes/orders.js', note: 'refunds' }] }] });
-    const out = run('build.mjs', root, '--no-claude-md');
+    const out = run('build.mjs', root);
     assert.doesNotMatch(out, /not valid JSON/);
     const g = readGraph(root);
     assert.equal(g.files.find((f) => f.p === 'shop-api/server.js').name, 'Shop server');
@@ -32,7 +32,7 @@ test('a map builds and updates from files that start with a byte order mark', ()
 
     const issue = g.health.issues[0];
     withBom(map('health-dismissed.json'), { dismissed: [{ id: issue.id, locations: issue.locations || [], reason: 'fine' }] });
-    run('build.mjs', root, '--no-claude-md');
+    run('build.mjs', root);
     assert.equal(readGraph(root).health.dismissed.length, 1, 'the dismissal is read');
 
     // the other scripts read the same files
@@ -59,7 +59,7 @@ test('a blueprint\'s plan.json with a byte order mark is planned and drawn', () 
     addBom(path.join(root, 'floorplan', 'plan.json'));
     addBom(path.join(root, 'floorplan', 'architecture.json'));
     assert.match(run('plan.mjs', root), /BLUEPRINT/);
-    run('build.mjs', root, '--no-claude-md');
+    run('build.mjs', root);
     assert.equal(readGraph(root).files.length, 21);
   } finally { cleanup(root); }
 });
@@ -71,13 +71,13 @@ test('near miss: a file that isn\'t JSON after the mark is still an error naming
     run('scan.mjs', root);
     const arch = readJson(archFile);
     fs.writeFileSync(archFile, BOM + '{ "project": ');
-    assert.match(fails(() => run('build.mjs', root, '--no-claude-md')), /architecture\.json is not valid JSON/);
+    assert.match(fails(() => run('build.mjs', root)), /architecture\.json is not valid JSON/);
     // only one mark, at the very start, is skipped: a second one is not JSON either
     fs.writeFileSync(archFile, BOM + BOM + JSON.stringify(arch));
-    assert.match(fails(() => run('build.mjs', root, '--no-claude-md')), /architecture\.json is not valid JSON/);
+    assert.match(fails(() => run('build.mjs', root)), /architecture\.json is not valid JSON/);
     // text that holds the character keeps it (the map shows it as a marker, see hostile-content.test.mjs)
     withBom(archFile, { ...arch, project: { ...arch.project, summary: `A sample${BOM} shop.` } });
-    run('build.mjs', root, '--no-claude-md');
+    run('build.mjs', root);
     assert.equal(readGraph(root).project.summary, `A sample${BOM} shop.`);
   } finally { cleanup(root); }
 });

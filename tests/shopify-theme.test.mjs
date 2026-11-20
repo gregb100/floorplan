@@ -63,7 +63,7 @@ before(() => {
   } });
   run('scan.mjs', root);
   scan = readJson(path.join(root, 'floorplan', '.cache', 'scan.json'));
-  run('build.mjs', root, '--no-claude-md');
+  run('build.mjs', root);
   graph = readGraph(root);
 });
 after(() => cleanup(root));

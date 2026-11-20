@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// floorplan describer: turn the built graph into per-module worksheets that Claude (or parallel
-// subagents) use to write a human-readable name + one-line description for every file and route.
+// floorplan describer: turn the built graph into per-module worksheets that a person (or parallel
+// workers) use to write a human-readable name + one-line description for every file and route.
 //
 // usage: node describe.mjs [root]                  write worksheets + description skeletons, print an index
 //        node describe.mjs [root] --all            include entries that already have descriptions

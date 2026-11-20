@@ -15,7 +15,7 @@ before(() => {
     'app/rules.py': big,
   }, { arch: { project: { name: 'Sample', summary: 'A small sample.' }, nodes: [{ id: 'app', label: 'App', kind: 'service', summary: 'The app.', paths: ['app/**'] }] } });
   scanOut = run('scan.mjs', root, '--max-file-kb', '8');
-  run('build.mjs', root, '--no-claude-md');
+  run('build.mjs', root);
   graph = readGraph(root);
 });
 after(() => cleanup(root));

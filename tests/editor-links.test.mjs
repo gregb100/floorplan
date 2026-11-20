@@ -24,7 +24,7 @@ function built(editor) {
   const file = path.join(root, 'floorplan', 'architecture.json');
   if (editor !== undefined) writeJson(file, { ...readJson(file), editor });
   run('scan.mjs', root);
-  run('build.mjs', root, '--no-claude-md');
+  run('build.mjs', root);
   return root;
 }
 
@@ -116,11 +116,11 @@ test('a hostile "editor" is a build error, and one put in the page some other wa
   run('scan.mjs', root);
   for (const bad of ['javascript:alert(document.domain)//{path}', 'https://example.com/?f={path}', 'data:text/html;base64,PHNjcmlwdD4={path}', 'vscode://file/{path}"><img src=x onerror=alert(1)>']) {
     writeJson(file, { ...readJson(file), editor: bad });
-    assert.match(fails(() => run('build.mjs', root, '--no-claude-md')), /editor "/);
+    assert.match(fails(() => run('build.mjs', root)), /editor "/);
   }
   // the page checks again: a graph or server setting that skipped the checks falls back to VS Code
   writeJson(file, { ...readJson(file), editor: undefined });
-  run('build.mjs', root, '--no-claude-md');
+  run('build.mjs', root);
   const html = page(root), g = readGraph(root);
   for (const bad of ['javascript:alert(1)//{path}', 'http://example.com/{path}', 'vscode://file/{path}"x', 'data:,{path}', 'ms-msdt:{path}', 'zed://file/', 42]) {
     assert.equal(pageLinks(html, { ...g, meta: { ...g.meta, editor: bad } }).EDITOR, 'vscode://file/{path}:{line}', String(bad));

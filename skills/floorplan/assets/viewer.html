@@ -194,7 +194,7 @@ svg.lod-low .foot .meta { visibility: hidden; }
 .node:hover .card.external { background: rgba(var(--ink), .03); }
 .card.dir { background: var(--dir-bg); box-shadow: inset 0 0 0 1px rgba(var(--ink), .05); }
 .card.module { background: var(--raise); }
-/* recent work: cards Claude just changed (green ring + tag), and the parts that contain them (soft ring + count) */
+/* recent work: cards that just changed (green ring + tag), and the parts that contain them (soft ring + count) */
 .card.recent { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--recent) 62%, transparent), var(--shadow-card); }
 .node:hover .card.recent { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--recent) 85%, transparent), var(--shadow-lift); }
 .card.recent-in { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--recent) 30%, transparent), var(--shadow-card); }
@@ -734,7 +734,7 @@ function chain(item) {
   chainCache.set(item, out);
   return out;
 }
-// Recent work (G.recent): the cards Claude just changed, and how many changes sit inside each part
+// Recent work (G.recent): the cards that just changed, and how many changes sit inside each part
 const recentTasks = G.recent?.tasks || [];
 const recentBy = new Map();
 for (const it of G.recent?.items || []) { if (!parentOf.has(it.id)) continue; if (!recentBy.has(it.id)) recentBy.set(it.id, []); recentBy.get(it.id).push(it); }
@@ -795,7 +795,7 @@ function enclosingSymbol(f, line) {
   return best && parentOf.has(best.id) ? best.id : null;
 }
 
-/** An answer's ad-hoc board: just the cards Claude picked, and every connection among them. */
+/** An answer's ad-hoc board: just the cards the answer picked, and every connection among them. */
 function buildAnswerView() {
   const visible = state.answer.items.map((x) => x.id);
   const vis = new Set(visible);
@@ -2005,7 +2005,7 @@ const custom = { panel: null };
 function emit(event, data) { for (const fn of ext.listeners[event] || []) { try { fn(data); } catch (e) { console.error('floorplan extension', e); } } }
 window.Floorplan = Object.freeze({
   version: 1,
-  graph: G, query: Q, state, agent: G.meta.agent, exported: EXPORTED,
+  graph: G, query: Q, state, exported: EXPORTED,
   // model helpers
   info, chain, children: (id) => visibleKids(id), parentOf: (id) => parentOf.get(id), exists: (id) => Q.exists(id),
   files, nodes, routes, colorOf, iconKey,

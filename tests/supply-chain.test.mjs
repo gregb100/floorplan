@@ -123,7 +123,9 @@ test('no model CLI is ever named as a program to run', () => {
 
 test('no waitlist, cloud or phone-home: the symbols are gone for good', () => {
   const everywhere = shipped.filter((f) => /\.(mjs|js|html|json|txt)$/.test(f));
-  const SYMS = ['WAITLIST_URL', 'joinWaitlist', 'cloudPrompt', 'claudeEmail', 'saveCloud', '/api/cloud/', 'FloorplanCloud', '#cloud-card', 'floorplan-waitlist', 'FLOORPLAN_WAITLIST_URL', 'FLOORPLAN_NO_PROMPTS'];
+  const SYMS = ['WAITLIST_URL', 'joinWaitlist', 'cloudPrompt', 'claudeEmail', 'saveCloud', '/api/cloud/', 'FloorplanCloud', '#cloud-card', 'floorplan-waitlist', 'FLOORPLAN_WAITLIST_URL', 'FLOORPLAN_NO_PROMPTS',
+    // the coding-agent concept (F1): no detection, no project-notes file, no agent field in the map
+    'writeClaudeMd', 'detectAgent', 'FLOORPLAN_AGENT', 'CLAUDE.local.md', 'no-claude-md', 'claude-md', 'Codex', 'codex'];
   for (const f of everywhere) {
     const src = read(f);
     for (const sym of SYMS) assert.ok(!src.includes(sym), `${rel(f)} still mentions ${sym}. ${UPDATE}`);

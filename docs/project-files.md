@@ -1,6 +1,6 @@
 # What's in your project
 
-Floorplan writes to exactly two places in your project: the `floorplan/` folder, and (in Claude Code, only if you say yes) a short section in `CLAUDE.local.md`. Neither is committed to git, and nothing else in your project is touched. Run in [unattended mode](unattended.md) (from CI or your own scripts), it writes only the `floorplan/` folder.
+Floorplan writes to exactly one place in your project: the `floorplan/` folder. It is not committed to git, and nothing else in your project is ever touched — no project notes, no git ignore lists, nothing outside the folder.
 
 ## The `floorplan/` folder
 
@@ -15,7 +15,7 @@ Floorplan writes to exactly two places in your project: the `floorplan/` folder,
 | `custom-flows.json` | Flows someone once requested from the map; kept so old maps don't lose them | Only to delete one |
 | `health-dismissed.json` | Health issues you marked **Not a problem**, with your reasons | Only to undo one. **Show again** on the map does it too |
 | `query.mjs` | Looks things up in the map from the command line | No |
-| `artifact.html` | A copy for opening in the Claude app, only if you asked for one | No |
+| `artifact.html` | A copy without this machine's paths, only if you asked for one | No |
 | `<project>-map.html` | An exported copy to share, only if you ran `serve.mjs --export` | No |
 | `.cache/` | The scan, the description worksheets, the last update's changes, the driver's run log and result | No. Safe to delete |
 | `.gitignore` | Keeps this whole folder out of git | No |
@@ -35,23 +35,10 @@ A blueprint is edited the same way, through `plan.json` and `architecture.json`.
 
 The full format is in [`skills/floorplan/references/schema.md`](../skills/floorplan/references/schema.md), and the style guide for names and descriptions is in [`writing-descriptions.md`](../skills/floorplan/references/writing-descriptions.md).
 
-## `CLAUDE.local.md`
-
-In Claude Code, after the first map, Claude asks whether future sessions in your project should use it. Only if you say yes, Floorplan adds a short marked section here, telling future Claude Code sessions that the map exists and how to look things up in it. `CLAUDE.local.md` is Claude Code's file for personal project notes, loaded at the start of every session like `CLAUDE.md`. Floorplan:
-- creates the file if you don't have one;
-- only ever rewrites its own section, between `<!-- floorplan:start -->` and `<!-- floorplan:end -->`, and keeps it current on each update;
-- adds the file to your clone's private ignore list, `.git/info/exclude`.
-
-To remove it, delete the section. To keep it from coming back, put `<!-- floorplan:off -->` anywhere in `CLAUDE.local.md`. (Before 0.4.4, Floorplan added the section without asking; if you have it from then, it stays until you remove it.)
-
-A blueprint adds no section, since there's no code to look up yet. Claude offers it once the map switches to the real code.
-
-In Codex this file isn't touched. Codex has no personal, uncommitted notes file (`AGENTS.md` is shared with your team), so Floorplan doesn't add a note there.
-
 ## Staying out of git
 
 - **`floorplan/`** contains its own `.gitignore` that ignores everything in the folder, including itself. Your `.gitignore` isn't changed, and the folder never appears in `git status`.
-- **`CLAUDE.local.md`** is listed in `.git/info/exclude`, the per-clone ignore list that is never committed. If your project already ignores it, nothing is added.
+- Nothing else is written or ignored anywhere in your project.
 
 The map is personal to each clone. Teammates who install Floorplan make their own.
 

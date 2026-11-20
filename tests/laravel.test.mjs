@@ -24,7 +24,7 @@ before(() => {
   } });
   fs.cpSync(path.join(REPO, 'tests', 'fixtures', 'laravel-app'), root, { recursive: true });
   run('scan.mjs', root);
-  run('build.mjs', root, '--no-claude-md');
+  run('build.mjs', root);
   graph = readGraph(root);
 });
 after(() => cleanup(root));

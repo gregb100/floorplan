@@ -275,9 +275,9 @@ test('a whole first map, following workflow.json with canned model answers', () 
   assert.equal(b.descriptions.complete, true);
   assert.deepEqual(b.descriptions.files, { described: 8, total: 8 });
   assert.equal(b.recentWork.cards, 1);
-  assert.equal(b.agent, 'none');
+  assert.ok(!('agent' in b), 'the build result carries no agent field');
   const g = readGraph(root);
-  assert.equal(g.meta.agent, 'none');
+  assert.ok(!('agent' in g.meta), 'map meta carries no agent field');
   assert.ok(g.files.every((f) => !f.auto), 'every file has a description');
   assert.match(readJson(path.join(root, 'floorplan', 'recent-work.json')).updatedAt, /^\d{4}-\d\d-\d\dT/);
 });
@@ -445,7 +445,7 @@ test('unattended mode writes nothing outside floorplan/, even with an old Floorp
     assert.equal(unattended('scan.mjs', p).code, 0);
     const b = unattended('build.mjs', p);
     assert.equal(b.code, 0);
-    assert.match(b.json.notes.claudeLocalMd, /left alone/);
+    assert.ok(!('claudeLocalMd' in b.json.notes), 'no project-notes handling at all');
     assert.ok(b.json.wrote.every((f) => f.startsWith('floorplan/')), b.json.wrote.join(', '));
     assert.equal(unattended('describe.mjs', p).code, 0);
     assert.equal(unattended('recent.mjs', p).code, 0);
@@ -459,16 +459,15 @@ test('unattended mode writes nothing outside floorplan/, even with an old Floorp
   } finally { cleanup(p); }
 });
 
-test('without unattended mode the same project behaves as before: the old section moves into CLAUDE.local.md', () => {
+test('outside unattended mode an old CLAUDE.md section is left exactly as it was', () => {
   const p = shopApp();
   try {
     fs.writeFileSync(path.join(p, 'CLAUDE.md'), OLD_BLOCK);
     run('scan.mjs', p);
-    const out = run('build.mjs', p, '--agent', 'claude');
-    assert.match(out, /CLAUDE\.LOCAL\.MD {2}created CLAUDE\.local\.md; moved the Floorplan section out of CLAUDE\.md/);
-    assert.equal(fs.readFileSync(path.join(p, 'CLAUDE.md'), 'utf8'), 'Team notes.\n');
-    assert.match(fs.readFileSync(path.join(p, 'CLAUDE.local.md'), 'utf8'), /floorplan\/query\.mjs/);
-    assert.equal(readGraph(p).meta.agent, 'claude');
+    const out = run('build.mjs', p);
+    assert.doesNotMatch(out, /CLAUDE\.LOCAL\.MD/, 'no project-notes offer');
+    assert.equal(fs.readFileSync(path.join(p, 'CLAUDE.md'), 'utf8'), OLD_BLOCK, 'CLAUDE.md untouched');
+    assert.ok(!fs.existsSync(path.join(p, 'CLAUDE.local.md')), 'no project notes created');
   } finally { cleanup(p); }
 });
 
@@ -489,34 +488,31 @@ test('unattended mode leaves a map from before the rename (show-code/) where it 
 
 // ---------- a map that names no agent ----------
 
-test('a map made in unattended mode records agent "none", and its page names no agent', () => {
+test('a map built in unattended mode names no agent anywhere', () => {
   const p = shopApp();
   try {
     unattended('scan.mjs', p);
     const b = unattended('build.mjs', p);
-    assert.equal(b.json.agent, 'none');
-    assert.match(b.json.report, /AGENT {2}none/);
-    assert.equal(readGraph(p).meta.agent, 'none');
+    assert.ok(!('agent' in b.json), 'the build result carries no agent field');
+    assert.ok(!('agent' in readGraph(p).meta), 'map meta carries no agent field');
     const html = fs.readFileSync(path.join(p, 'floorplan', 'index.html'), 'utf8');
-    assert.match(html, /"agent":"none"/);
-    // the page offers no agent-named buttons, prompts or ask bar at all, whatever built the map
+    assert.ok(!/"agent"/.test(html), 'the page carries no agent field');
+    // the page offers no agent-named buttons, prompts or ask bar at all
     for (const piece of ['Fix with Claude', 'Fix with Codex', 'Fix with AI', 'Build this with Claude', 'Build this with Codex', 'Ask anything about', 'FLOORPLAN_SERVER']) assert.ok(!html.includes(piece), `no ${JSON.stringify(piece)} affordance`);
   } finally { cleanup(p); }
 });
 
-test('FLOORPLAN_AGENT=none works on its own, and unattended mode implies it unless an agent is named', async () => {
-  const { detectAgent } = await lib('agent.mjs');
-  assert.equal(detectAgent({}, { FLOORPLAN_AGENT: 'none' }), 'none');
-  assert.equal(detectAgent({}, { FLOORPLAN_UNATTENDED: '1' }), 'none');
-  assert.equal(detectAgent({}, { FLOORPLAN_UNATTENDED: '1', CODEX_THREAD_ID: 'x' }), 'none');
-  assert.equal(detectAgent({ agent: 'codex' }, { FLOORPLAN_UNATTENDED: '1' }), 'codex');
-  assert.equal(detectAgent({}, { FLOORPLAN_UNATTENDED: '0' }), 'claude', 'only a yes switches it on');
+test('a build outside unattended mode still writes nothing outside the map folder', () => {
   const p = shopApp();
   try {
     run('scan.mjs', p);
-    const out = execFileSync(process.execPath, [path.join(SKILL, 'scripts', 'build.mjs'), p], { encoding: 'utf8', env: { ...process.env, FLOORPLAN_AGENT: 'none' } });
-    assert.doesNotMatch(out, /CLAUDE\.LOCAL\.MD/, 'a map made without an agent session offers no Claude Code note');
-    assert.ok(!fs.existsSync(path.join(p, 'CLAUDE.local.md')));
+    const out = run('build.mjs', p);
+    assert.doesNotMatch(out, /CLAUDE\.LOCAL\.MD/, 'no project-notes offer');
+    assert.ok(!fs.existsSync(path.join(p, 'CLAUDE.local.md')), 'no project notes written');
+    // nothing is ever added to git's local ignore list either
+    const exclude = path.join(p, '.git', 'info', 'exclude');
+    const lines = fs.existsSync(exclude) ? fs.readFileSync(exclude, 'utf8') : '';
+    assert.ok(!/floorplan|CLAUDE/i.test(lines), 'git exclude untouched');
   } finally { cleanup(p); }
 });
 
@@ -580,7 +576,7 @@ test('no files at all: unattended mode fails, and the plain scan says so', () =>
 test('a refresh whose scan fails exits non-zero in unattended mode, with NEXT fix_scan', () => {
   const p = shopApp();
   try {
-    run('scan.mjs', p); run('build.mjs', p, '--no-claude-md');
+    run('scan.mjs', p); run('build.mjs', p);
     breakRepo(path.join(p, 'shop-web'));
     const r = unattended('refresh.mjs', p);
     assert.equal(r.code, 1);
@@ -603,7 +599,7 @@ test('refresh exit codes: unattended mode fails on no map and on a failed build;
     // a map whose build will fail: a flow points at a file that's then deleted
     const arch = readJson(path.join(p, 'floorplan', 'architecture.json'));
     writeJson(path.join(p, 'floorplan', 'architecture.json'), { ...arch, flows: [{ id: 'f', title: 'Notes', steps: [{ node: 'web', note: 'a' }, { node: 'shop-api/routes/notes.js', note: 'b' }] }] });
-    run('scan.mjs', p); run('build.mjs', p, '--no-claude-md');
+    run('scan.mjs', p); run('build.mjs', p);
     fs.rmSync(path.join(p, 'shop-api/routes/notes.js'));
     const plain = exec('refresh.mjs', p);
     assert.equal(plain.code, 0, 'default: the failed build is a NEXT item, not an exit code');

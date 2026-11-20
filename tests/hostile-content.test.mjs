@@ -100,7 +100,7 @@ describe('hostile text in every field leaves a page whose data parses and round-
     writeJson(path.join(root, 'floorplan', 'recent-work.json'), { tasks: [{ title: `Task ${H}`, request: `asked ${H}`, summary: `did ${H}`, status: `done ${H}`, items: [{ ref: 'api/server.js', change: 'changed', note: `changed ${H}` }] }] });
     writeJson(path.join(root, 'floorplan', 'custom-flows.json'), { flows: [{ id: 'c1', title: `Asked ${H}`, description: `d ${H}`, steps: [{ ref: 'n:web', note: `one ${H}` }, { ref: 'n:api', note: `two ${H}` }] }] });
     run('scan.mjs', root);
-    run('build.mjs', root, '--no-claude-md', '--artifact');
+    run('build.mjs', root, '--artifact');
   });
   after(() => cleanup(root));
 
@@ -131,7 +131,7 @@ describe('hostile text in every field leaves a page whose data parses and round-
     assert.match(html, /<title>Shop &lt;!--&lt;script&gt; &lt;\/script&gt;/, 'the title is escaped');
   });
 
-  test('the copy for the Claude app (--artifact) round-trips too', async () => {
+  test('the --artifact copy round-trips too', async () => {
     const { graph } = await dataOf(fs.readFileSync(path.join(root, 'floorplan', 'artifact.html'), 'utf8'));
     assert.deepEqual(graph.nodes, readGraph(root).nodes);
     assert.deepEqual(graph.routes, readGraph(root).routes);
@@ -202,7 +202,7 @@ describe('a secret written into a description, label or note never reaches the m
     writeJson(path.join(root, 'floorplan', 'recent-work.json'), { tasks: [{ title: 'Payments', summary: `Set STRIPE_KEY=${key}`, items: [] }] });
     before0 = Object.fromEntries(['architecture.json', 'recent-work.json', 'descriptions/api.json'].map((f) => [f, fs.readFileSync(path.join(root, 'floorplan', f), 'utf8')]));
     run('scan.mjs', root);
-    try { json = JSON.parse(run('build.mjs', root, '--no-claude-md', '--json')); } catch (e) { json = JSON.parse(e.stdout); }
+    try { json = JSON.parse(run('build.mjs', root, '--json')); } catch (e) { json = JSON.parse(e.stdout); }
   });
   after(() => cleanup(root));
 
@@ -266,7 +266,7 @@ describe('Content-Security-Policy', () => {
       arch: { project: { name: 'Shop' }, nodes: [{ id: 'api', label: 'Server', kind: 'service', summary: H, paths: ['api/**'] }] },
     });
     run('scan.mjs', root);
-    run('build.mjs', root, '--no-claude-md', '--artifact');
+    run('build.mjs', root, '--artifact');
   });
   after(() => cleanup(root));
 
@@ -347,7 +347,7 @@ test('a pattern that isn\'t valid is a build error naming where it is, never a c
   try {
     run('scan.mjs', root);
     let out, code = 0;
-    try { out = run('build.mjs', root, '--no-claude-md', '--json'); } catch (e) { out = e.stdout; code = e.status; assert.equal(e.stderr, '', 'no stack trace'); }
+    try { out = run('build.mjs', root, '--json'); } catch (e) { out = e.stdout; code = e.status; assert.equal(e.stderr, '', 'no stack trace'); }
     assert.equal(code, 1);
     const r = JSON.parse(out);
     assert.equal(r.ok, false);
@@ -374,7 +374,7 @@ test('a description file that isn\'t an object is a build error naming the file,
   };
   try {
     run('scan.mjs', root);
-    run('build.mjs', root, '--no-claude-md');
+    run('build.mjs', root);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     for (const [text, says] of [
       ['null', /^descriptions\/api\.json must be an object like \{ "files": \{ … \}, "routes": \{ … \} \}, not null$/],
@@ -385,7 +385,7 @@ test('a description file that isn\'t an object is a build error naming the file,
       ['{"files": {}, "routes": ["GET /"]}', /^descriptions\/api\.json: "routes" must be an object, not a list$/],
     ]) {
       fs.writeFileSync(file, text);
-      const built = json('build.mjs', '--no-claude-md');
+      const built = json('build.mjs');
       assert.equal(built.code, 1, text);
       assert.equal(built.r.ok, false, text);
       assert.equal(built.r.errors.length, 1, `${text}\n${built.r.errors.join('\n')}`);
@@ -402,7 +402,7 @@ test('a description file that isn\'t an object is a build error naming the file,
       assert.deepEqual(Object.keys(readJson(file).files), ['api/a.js'], text);
     }
     // the file describe.mjs wrote builds
-    assert.equal(json('build.mjs', '--no-claude-md').code, 0);
+    assert.equal(json('build.mjs').code, 0);
   } finally { cleanup(root); }
 });
 
@@ -483,7 +483,7 @@ test('files built to make pattern matching slow are scanned quickly', () => {
   try {
     const t = Date.now();
     run('scan.mjs', root);
-    run('build.mjs', root, '--no-claude-md', '--arch', writeArch(root));
+    run('build.mjs', root, '--arch', writeArch(root));
     assert.ok(Date.now() - t < 30000, `scan and check took ${Date.now() - t} ms`);
   } finally { cleanup(root); }
 });
@@ -650,7 +650,7 @@ test('the map shows invisible and reordering characters as a visible marker, and
   });
   try {
     run('scan.mjs', root);
-    run('build.mjs', root, '--no-claude-md');
+    run('build.mjs', root);
     const html = fs.readFileSync(path.join(root, 'floorplan', 'index.html'), 'utf8');
     const a = html.indexOf('const h = (s) =>'), b = html.indexOf('// ---------- when the browser says no');
     const { h, hk } = vm.runInNewContext(html.slice(a, b) + '\n;({ h, hk })');

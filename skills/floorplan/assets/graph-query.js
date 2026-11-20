@@ -1,5 +1,5 @@
-// floorplan graph queries, shared by the viewer (as page tools for the Claude app) and by
-// floorplan/query.mjs (as a CLI that the Claude Code CLI or Codex calls). Plain script: no imports, no exports.
+// floorplan graph queries, shared by the viewer (as its page tools) and by floorplan/query.mjs
+// (as a CLI). Plain script: no imports, no exports.
 // Item ids: n:<node id>  f:<file path>  r:<route index>  s:<file path>#<export index>
 
 function createGraphQuery(G) {
